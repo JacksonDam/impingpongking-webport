@@ -141,28 +141,32 @@ class TutorialView {
     for (const n of [this.skipA1, this.skipA2, this.skipText]) if (n) LT.alpha(n, 1, 0.2);
     if (!await W_(0.8)) return;
 
-    /* one taught rally: the instruction slides in and the finger prompts */
-    if (this.instruction) {
-      LT.alpha(this.instruction, 1, 0.5).setEase(15);
-      LT.moveLocalX(this.instruction, 129.9, 0.5).setEase(30);
-    }
+    /* Two taught rallies.  The instruction art slides in at x=129.9, out to
+       x=-1238 when the hit lands, swaps to the HIT R sprite and comes back --
+       which is why it never sits under "Well done!". */
+    if (this.instruction) LT.alpha(this.instruction, 1, 0.5).setEase(15);
     for (const n of [this.leftFinger, this.rightFinger]) if (n) LT.alpha(n, 1, 0.5);
-    if (!await W_(0.6)) return;
-
-    /* two taught rallies: the rival serves, the ball runs to the hit window,
-       and the tutorial waits for the tap.  The ball is driven straight off
-       BTCore, exactly as TutorialStart does. */
     for (const side of [true, false]) {
+      if (this.instruction) {
+        if (!side) this.instruction.setSprite(this.cfg.Tutorial_HitRightInstructionSprite);
+        LT.moveLocalX(this.instruction, 129.9, side ? 0.5 : 0.4).setEase(30);
+      }
       const f = side ? this.leftFinger : this.rightFinger;
-      if (f) LT.scale(f, 1.15, 0.35).setEase(15).setLoopPingPong(-1);
+      const pulse = f ? LT.scale(f, 1.15, 0.35).setEase(15).setLoopPingPong(-1) : null;
+      if (!await W_(0.6)) return;
       if (!await this.taughtRally(side, alive)) return;
-      LT.cancelAll();
+      if (pulse) pulse.cancel();
       if (f) f.setLocalScale(1, 1);
+      if (this.instruction) LT.moveLocalX(this.instruction, -1238, side ? 0.4 : 0.5).setEase(26);
       this.hitsDone++;
       if (!await W_(0.5)) return;
     }
 
-    /* "Well done!" */
+    /* the rival walks off, then "Well done!" */
+    const mb = this.rival && this.rival.core && this.rival.core.manB;
+    if (mb) { LT.moveLocalX(mb, 1800, 0.5).setEase(26); LT.alpha(mb, 0, 0.5); }
+    if (this.rival && this.rival.core) this.rival.core.ChangeTrailImage('');
+    if (!await W_(1)) return;
     if (this.great) {
       LT.moveLocalX(this.great, 0, 0.4).setEase(30);
       LT.alpha(this.great, 1, 0.4);
