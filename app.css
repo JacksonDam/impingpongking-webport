@@ -1,0 +1,38 @@
+/* 1280x2272 is the game's own design space -- CanvasScaler m_ReferenceResolution
+   on every mode Canvas, with m_ScreenMatchMode 0 / match 1.0 (match height).
+   The port keeps that space verbatim and scales it to the viewport. */
+@font-face { font-family: "Oduda"; src: url("assets/font/Oduda-Bold.ttf"); font-weight: bold; }
+@font-face { font-family: "MSYI";  src: url("assets/font/MSYI_0.ttf"); }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%; background: #0d0d0f; overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#wrap { position: fixed; inset: 0; overflow: hidden; }
+#stage {
+  position: absolute; left: 50%; top: 50%; width: 1280px; height: 2272px;
+  transform-origin: 50% 50%; overflow: hidden; background: #fff;
+  font-family: "Oduda", "MSYI", "Arial Black", sans-serif;
+}
+#stage .n { position: absolute; }                 /* one Unity RectTransform */
+#stage .img {
+  position: absolute;              /* drawSprite places the trimmed piece by left/top */
+  background-repeat: no-repeat;
+  image-rendering: -webkit-optimize-contrast;
+}
+#stage .txt { display: flex; white-space: pre-wrap; line-height: 1; }
+#boot {
+  position: fixed; inset: auto 0 24px 0; text-align: center;
+  color: #888; font: 13px/1.6 ui-monospace, Menlo, monospace; pointer-events: none;
+}
+#boot.hide { display: none; }
+
+/* dev harness overlay */
+#dbg {
+  position: fixed; left: 8px; top: 8px; z-index: 9;
+  font: 11px/1.45 ui-monospace, Menlo, monospace; color: #0f0;
+  background: rgba(0,0,0,.72); padding: 6px 9px; border-radius: 4px;
+  white-space: pre; pointer-events: none;
+}
