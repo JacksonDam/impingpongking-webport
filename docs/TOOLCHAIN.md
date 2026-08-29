@@ -161,12 +161,50 @@ reached only by walking through `UnityEngine.UI` base classes; that
 align; and — settling a question I had guessed wrong — that Unity **does**
 serialize a public `[Obsolete]` field. It now passes **3288/3288**.
 
+### `anim.py` — the splash's AnimationClips
+
+A player build strips type trees, so an `AnimationClip` has to be located by its
+own landmarks. Two of them turn out to be decisive:
+
+- **the binding table.** `m_ClipBindingConstant.genericBindings` is an array of
+  28-byte records `{path, attribute, script, typeID, customType, isPPtrCurve}`
+  where `path` is the **CRC32 of the object's path** under the animator. Hash
+  every path in the scene and search for those words, and the table gives itself
+  away — and with it, exactly which objects the clip animates.
+- **the streamed curves.** `m_StreamedClip.data` is a `uint32[]` whose length
+  prefix must equal the gap in front of it, which pins the array. Inside, frames
+  are `{time, curveCount, StreamedCurveKey{index, coeff[4]}}` and the value is
+  `coeff[3]`; a frame at `+inf` terminates.
+
+**Oracles:** every path hash must resolve to a real object, and the widths of
+the bindings must add up to the clip's own `curveCount`. That second one matters
+because a Transform binding is *not* one curve: its attribute is a small enum
+(1 position, 2 rotation, 3 scale) rather than a CRC, and it occupies three or
+four consecutive curve slots. Getting that wrong silently mixed neighbouring
+tracks together and made the smoke and the debris swap values.
+
+`m_StartTime`/`m_StopTime` are then read by walking the remaining `Clip`
+members, and the animation events (time + function name) come off the tail —
+which is how the splash's exact 1.5 s and 2.0 s beats are known.
+
+### `arrays.py` — tables built in code
+
+Some of the game's data is not in the scene and not in a JSON literal: it is a
+run of `newarr` / `dup` / `ldc` / `stelem` in a constructor. Walking that IL
+recovers the array and the field it lands in, which is where the **51 rival
+names**, the lines each rival says when beaten, and the taunts when you lose all
+live (`TestEnemyDetail::.ctor` 0x194E8).
+
 ### `export.py` — the port's payload
 
-Resolves sprite and sequence pointers to names, walks the RectTransform tree,
-and emits `assets/data/game.js`. It is a `.js` assignment rather than `.json`
-because the port has to run from `file://`, where `fetch` of a sibling file is
-blocked.
+Walks every scene and prefab, resolves sprite and node pointers to names and
+paths, and emits `assets/data/game.js`. It is a `.js` assignment rather than
+`.json` because the port has to run from `file://`, where `fetch` of a sibling
+file is blocked.
+
+Component fields that point at other objects are resolved to **node paths**, so
+the port wires itself the way the scene does: `Table_Settings.SettingListGroup`
+comes out as `"Setting Group/SettingBg Image"` rather than a raw file id.
 
 ## Answering a new question
 
@@ -191,3 +229,15 @@ grep -n 'hitBackStartFrame' analysis/src/*.cs           # every site touching a 
   ball is invisible on a light background.
 - Sibling index is paint order. Sorting the scene tree by name instead layers
   the table over the players.
+- **`localPosition` is not `anchoredPosition`.** They differ by
+  `anchorRef − parentSize × parentPivot`, which is zero only for a
+  centre-anchored node under a centre-pivoted parent. The game moves almost
+  everything with `LeanTween.moveLocal*`, i.e. in local space, so an
+  edge-anchored node — the tutorial's instruction art is anchored to the left
+  edge with a 0.8816 pivot — lands 640 px out if you conflate them.
+- **A driven Canvas serialises a stale pivot.** RivalModeScene's is (0, 0);
+  Unity drives it centre-pivoted at runtime. Take the stored value and every
+  `moveLocalX(…, 0)` in the game puts its panel half a screen to the left.
+- `requestAnimationFrame` does **not** advance under headless Chrome's
+  `--virtual-time-budget`, but timers do. The port drives its clock from both,
+  or nothing animates in a screenshot.

@@ -16,6 +16,7 @@ html, body {
   transform-origin: 50% 50%; overflow: hidden; background: #fff;
   font-family: "Oduda", "MSYI", "Arial Black", sans-serif;
 }
+#stage .scene { position: absolute; inset: 0; }
 #stage .n { position: absolute; }                 /* one Unity RectTransform */
 #stage .img {
   position: absolute;              /* drawSprite places the trimmed piece by left/top */

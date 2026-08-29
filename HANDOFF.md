@@ -26,6 +26,9 @@ copy it across; the repo copy is the one people read.
 - **Plain HTML/CSS/JS**, must run from `file://`. No build step, no deps.
   That is why `assets/data/game.js` is a `.js` assignment and not `.json`, and
   why audio goes through `HTMLAudioElement` rather than `decodeAudioData`.
+- **Nothing is hand-placed.** Every screen is rebuilt from the exported scene
+  tree; if something is in the wrong place the fix is in the rect maths or the
+  export, not a magic number in the view.
 - The design space is **1280 × 2272** — Unity's own, kept verbatim and scaled to
   the viewport rather than re-laid-out.
 - **Bug-for-bug faithful.** Mark each one `[sic]` in `app.js` with the address.
@@ -35,15 +38,21 @@ copy it across; the repo copy is the one people read.
 ## 3. Verification discipline
 
 ```sh
-./selftest.sh                # 60 assertions, headless
-./shot.sh look "auto=1" 5200 # screenshot after 5.2 s of autoplay
+./selftest.sh                  # 117 assertions, headless
+./shot2.sh look "auto=1" 9000  # screenshot 9 s in
 ```
 
 **Always do the negative check.** After adding an assertion, break the constant
-it covers and confirm that assertion — and ideally only that one — fails. Two
-assertions in this suite passed vacuously until that was done: the sweet-spot
-pair used frame indices that did not straddle the `hitBackStartFrame + 6`
-boundary, so changing the window from 6 to 3 left them green.
+it covers and confirm that assertion — and ideally only that one — fails. Four
+assertions in this suite passed vacuously until that was done:
+
+- the sweet-spot pair used frame indices that did not straddle the
+  `hitBackStartFrame + 6` boundary, so changing the window from 6 to 3 left
+  them green;
+- the geometry pair only probed a centre-anchored node, where localPosition and
+  anchoredPosition are equal either way — so both the localPosition conversion
+  and the driven-Canvas pivot could be deleted with the suite still passing.
+  They now probe an edge-anchored node and a stretched one.
 
 ## 4. Bugs found and fixed while porting (don't re-litigate)
 
@@ -58,38 +67,54 @@ boundary, so changing the window from 6 to 3 left them green.
 | all sprite rects 8 bytes early | `m_SourceSkin` exists in Unity 2018.1 only |
 | every `Image` 128 bytes short | `UnityEvent` ends with an `m_TypeName` string |
 | stage off-centre | `place-items:center` centres inside a content-sized grid track, which is the item itself |
+| tutorial text half off-screen | `moveLocalX` sets **localPosition**, not anchoredPosition; they differ for an edge-anchored node |
+| share panel half a screen left | a driven Canvas serialises a stale pivot — RivalModeScene's is (0,0), Unity drives it at (0.5,0.5) |
+| nothing animated in a screenshot | `requestAnimationFrame` does not advance under `--virtual-time-budget`; the clock needs a timer too |
+| crash on leaving a scene | `LT.cancelAll()` runs inside a tween's own callback, so the ticker must step a snapshot |
+| splash tracks mixed together | a Transform binding is 3–4 curve slots, not 1, and its attribute is a small enum rather than a CRC |
 
-Two readings I got wrong and the oracle corrected: Unity **does** serialize a
-public `[Obsolete]` field (`EventTrigger.delegates`), and the standing-table
-lookup in `SetToBall` keys on `ManAHitPos`, not `ManACurPos`.
+Three readings I got wrong and an oracle corrected: Unity **does** serialize a
+public `[Obsolete]` field (`EventTrigger.delegates`); the standing-table lookup
+in `SetToBall` keys on `ManAHitPos`, not `ManACurPos`; and the level index fed
+to `LoadLevelProb` is `OutterStageOrder * 5 + PlayerScore + 1`, not the stage
+number — every ball won inside a match steps the difficulty on.
 
 ## 5. Soft spots — improvised, not read out of the APK
 
 Fair game to tighten. Everything else carries a source; these don't:
 
-- **LeanTween easing.** ManA's 0.05 s lane change is a jump plus a 50 ms delay
-  before the swing. The original eases (`setEase(27)`).
-- **The score pads.** Position and art are the scene's; showing the resting
-  face rather than running `ScorePad`'s flip is mine.
-- **Which nodes start visible.** The scene ships most panels present and the
-  mode logic fades them in with LeanTween; `hideChrome()` is my selection of
-  what a rally needs. `RivalModeScene::Reset_EnterGame` 0x33C08 has the truth.
-- **Game over at 3 lost balls.** The real career flow (revive offer, result
-  page, next opponent) lives in `LoseAnim` / `WinAnim` / `OnRetryBtnCLick`.
-- **The background flash** on a loss is a CSS transition, not
-  `Table_Settings::SetBgColor`.
+- **ManA's lane change.** A jump plus a 50 ms delay before the swing; the
+  original tweens it over 0.05 s on `setEase(27)`.
+- **ManB's hop between B1/B2/B3.** The x positions (543.93 / 180 / 900) are my
+  reading of where the art sits, not values from `Core::ManBMove`.
+- **The score pads.** Position and art are the scene's; showing the resting face
+  rather than running `ScorePad`'s flip is mine.
+- **Which nodes start visible.** The scenes ship most panels present and fade
+  them in; `hideChrome()` is my selection of what a rally needs.
+  `RivalModeScene::Reset_EnterGame` 0x34178 has the truth.
+- **The home ball's bounce** while the title is up: the impulse after Let's
+  Fight is the real one (600,600 at gravity scale 3.3), the idle bounce is mine.
+- **The tutorial's little mission** — the three-ball drill between the two
+  taught hits — is left out; the rest of `TutorialStart`'s beats are the real
+  waits.
+- **The match flow between rivals.** The port goes straight to the next rival
+  (via the share panel every third win); the original runs the rival bridge, the
+  revive offer and a result page.
 
 ## 6. Ordered list of what to port next
 
-1. `RivalModeScene::Reset_EnterGame` properly — the real enter/exit visibility,
-   Ready/Fight, and the opponent intro (`ManBFirstLook`).
-2. The result flow: `LoseAnim`, `WinAnim`, the pause panel, `Revive`.
-3. `HomeScene` and the career bridge (`RivalModeBridge`), so stages are chosen
-   rather than passed as `?stage=`.
-4. The other three modes. They reuse `Core` unchanged — only the scene logic
+1. **The rival bridge** (`RivalModeBridge`) — the scrolling ladder of opponents
+   between matches, with the defeated marks. Its sprites and node wiring are
+   already in `game.js`.
+2. **Revive** and the pause/result panels (`Revive`, `PausePageBase`,
+   `ResultPageBase`).
+3. **The other three modes.** They reuse `Core` unchanged — only the scene logic
    differs, and their trails and `Core` config are already in `game.js`.
-5. `RivalModeAudiance` — the crowd sprites are extracted and placed but static.
-6. `ScorePad` flip and the LeanTween easing curves.
+   `EyesightModeScene` is the closest to RivalMode.
+4. The tutorial's **little mission** (the three-ball drill) and its skip alerts.
+5. `ScorePad`'s flip, and easing on ManA's lane change.
+6. The **OG tournament** and the **endless mode**, both of which have their own
+   ending branch in `RivalModeEnding`.
 
 ## 7. Environment notes
 
