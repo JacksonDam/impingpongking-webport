@@ -53,6 +53,14 @@ class TutorialView {
     this.skipHowTo = N(this.cfg.SkipHowToPlayImage);
     this.skipArrow1 = N(this.cfg.SkipAlertArrow1Image);
     this.skipArrow2 = N(this.cfg.SkipAlertArrow2Image);
+    this.goal3 = N(this.cfg.Goal3Text);
+    /* GameMgr::Init 0x27EC -- RemoteConfig.setName defaults to "Random", which
+       matches none of A/B/C/D, so a virgin save falls through to set "D" and
+       totalEnemyNum = 50.  The prefab ships the old "10" as a placeholder. */
+    if (this.goal3) this.goal3.setText('Try to beat ' + (DB.data.totalEnemyNum || 50) + ' of us!');
+    this.missionText = N(this.cfg.Tutorial_LittleMissionText);
+    this.remainBalls = (this.cfg.Tutorial_RemainBallImage || []).map(N).filter(Boolean);
+    this.remainCovers = (this.cfg.Tutorial_RemainBallCoverImage || []).map(N).filter(Boolean);
     this.IsSkipAlertShow = false;
     this.IsTutorialSkip = false;
     this.skipStage = 0;                              // 0 none, 1 Yes/No, 2 OK
@@ -78,6 +86,8 @@ class TutorialView {
     for (const n of [this.skipAlert21, this.skipAlert22, this.skipAlert23,
                      this.skipOk, this.skipOkText, this.skipMenu,
                      this.skipHowTo, this.skipArrow1, this.skipArrow2]) if (n) n.setAlpha(0);
+    if (this.missionText) this.missionText.setAlpha(0);
+    for (const n of this.remainBalls) if (n) n.setEnabled(false);
   }
 
   /* ------------------------------------------------------------- skipping */
@@ -292,11 +302,17 @@ class TutorialView {
       if (!await W_(0.5)) return;
     }
 
-    /* the rival walks off, then "Well done!" */
+    /* the rival walks off (0x0D1C) and the little mission is set up */
     const mb = this.rival && this.rival.core && this.rival.core.manB;
     if (mb) { LT.moveLocalX(mb, 1800, 0.5).setEase(26); LT.alpha(mb, 0, 0.5); }
     if (this.rival && this.rival.core) this.rival.core.ChangeTrailImage('');
-    if (!await W_(1)) return;
+    if (!await W_(0.4)) return;
+    while (this.IsSkipAlertShow && alive()) await wait(16);
+    if (!await W_(0.4)) return;
+
+    if (!await this.littleMission(alive)) return;
+
+    /* "Well done!" -- 0x1D8C */
     if (this.great) {
       LT.moveLocalX(this.great, 0, 0.4).setEase(30);
       LT.alpha(this.great, 1, 0.4);
@@ -311,6 +327,127 @@ class TutorialView {
     for (const n of [this.leftFinger, this.rightFinger, this.instruction]) if (n) LT.alpha(n, 0, 0.5);
     if (!await W_(0.8)) return;
     await this.lineUpAndReady(alive);
+  }
+
+  /* the little mission -- "Hit 3 balls to complete this tutorial." (0x0DF2).
+   * Three balls at real speed, left / right / left, each returned one lighting
+   * up a ball in the top bar; miss any and the whole drill starts over. */
+  async littleMission(alive) {
+    const c = this.rival && this.rival.core;
+    if (!c) return alive();
+    if (this.missionText) {
+      LT.moveLocalX(this.missionText, 146, 0.5).setEase(30);
+      LT.alpha(this.missionText, 1, 0.5);
+      LT.delayedCall(3.5, () => { if (this.missionText) LT.alpha(this.missionText, 0, 0.5); });
+    }
+    await wait(1000); if (!alive()) return false;
+    for (const n of this.remainBalls) {
+      n.setEnabled(true);
+      n.setColor([1, 1, 1, 0.35]);                   // dim until you win it
+      LT.scale(n, 1.5, 0.25).setEase(15).setLoopPingPong(1);
+      await wait(100); if (!alive()) return false;
+    }
+    /* m__4 at +0.8 s brings the rival back on to serve */
+    LT.delayedCall(0.8, () => {
+      if (c.manB) { LT.moveLocalX(c.manB, 543.93, 0.5).setEase(15); LT.alpha(c.manB, 1, 0.5).setEase(15); }
+    });
+    await wait(2000); if (!alive()) return false;
+
+    for (;;) {
+      for (const n of this.remainBalls) n.setColor([1, 1, 1, 0.35]);
+      this.IsLittleMissionLose = false;
+      const sides = [true, false, true];             // A1, A2, A1
+      let i = 0;
+      for (; i < 3; i++) {
+        if (!alive()) return false;
+        const ok = await this.missionBall(sides[i], i === 0, alive);
+        if (!alive()) return false;
+        if (!ok) { this.IsLittleMissionLose = true; break; }
+        const b = this.remainBalls[i];
+        if (b) { b.setColor([1, 1, 1, 1]); LT.scale(b, 2, 0.2).setEase(15).setLoopPingPong(1); }
+        await wait(150); if (!alive()) return false;
+      }
+      if (!this.IsLittleMissionLose) break;
+      /* a miss restarts the drill at the toss (IL_0F63) */
+      DB.data.Tutorial_RetryCount = (DB.data.Tutorial_RetryCount | 0) + 1;
+      DB.save();
+      await wait(800); if (!alive()) return false;
+    }
+    await wait(800); if (!alive()) return false;
+    return true;
+  }
+
+  /* one ball of the mission: the enemy's return, the hit window, the player's
+     shot back.  Unlike the taught rallies this one can be missed. */
+  async missionBall(side, isServe, alive) {
+    const c = this.rival.core;
+    const notif = this.rival.scene.n('Canvas/Core/Table Image/HitOnTableNotification Image');
+    c.ManAHitPos = side ? 'A1' : 'A2';
+    if (isServe) {
+      c.ManBTossBallAnim();
+      await wait(200); if (!alive()) return false;
+      c.ChangeTrailImage('TossBallTrail Image');
+      c.BallTrailSequenceTmp = c.cfg.TossBallTrialSequence;
+      for (let i = 0; i < c.BallTrailSequenceTmp.length; i++) {
+        if (!alive()) return false;
+        c.trailSet(i); await wait(40);
+      }
+      c.ManBSwing();
+      c.ChangeTrailImage('FirstBallTrail Image');
+      c.ChangeSequence('FirstBallTrail Image');
+    } else {
+      const nm = `From-B1-${c.ManAHitPos} Image`;
+      c.ChangeTrailImage(nm); c.ChangeSequence(nm);
+    }
+    this.waitingHit = side; this.hitOk = false;
+    let lost = false;
+    const seq = c.BallTrailSequenceTmp;
+    for (let i = 0; i < seq.length; i++) {
+      if (!alive()) return false;
+      c.trailSet(i);
+      if (i === c.hitBackStartFrame) {
+        c.IsAbleToHitBack = true;
+        if (notif) { notif.setActive(true); notif.setEnabled(true);
+                     notif.setLocalPos(side ? -103.6 : 103.6, -37.2); notif.setAlpha(1); }
+        Audio_.play('Hit2');
+        if (qs.get('auto')) this.hitOk = true;       // the harness plays perfectly
+      }
+      if (this.hitOk) break;
+      if (i === c.hitBackEndFrame - 2) c.ChangeTrailImage('Lose-B1-A1 Image');
+      if (i === c.hitBackEndFrame) {
+        c.IsAbleToHitBack = false;
+        if (notif) notif.setActive(false);
+        /* missed: the ball runs out on the Lose sequence */
+        c.ChangeSequence('Lose-B1-A1 Image');
+        for (let j = 0; j < c.BallTrailSequenceTmp.length; j++) {
+          if (!alive()) return false;
+          c.trailSet(j); await wait(30);
+        }
+        lost = true;
+        break;
+      }
+      await wait(29);
+    }
+    this.waitingHit = undefined;
+    c.IsAbleToHitBack = false;
+    if (notif) notif.setActive(false);
+    if (lost || !this.hitOk) { c.ChangeTrailImage(''); return false; }
+
+    Audio_.play('Hit1');
+    c.ManACurPos = side ? 'A1' : 'A2';
+    this.rival.placeManA(c.ManACurPos);
+    c.ManASwing();
+    const nm = `To-${c.ManACurPos}-B1 Image`;
+    if (this.rival.trails[nm]) {
+      c.ChangeTrailImage(nm); c.ChangeSequence(nm);
+      for (let i = 0; i < c.BallTrailSequenceTmp.length; i++) {
+        if (!alive()) return false;
+        c.trailSet(i);
+        if (i === c.touchManBTableFrame + 3) c.ManBSwing();
+        await wait(29);
+      }
+    }
+    return true;
   }
 
   /* the tail both TutorialStart and SkipAnim run into */

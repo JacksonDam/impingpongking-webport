@@ -672,6 +672,25 @@
       v.destroy();
     }
 
+    /* -------------------------------------------- the tutorial's own bits */
+    {
+      const host = document.createElement('div');
+      const rival = new RivalModeSceneView(host, mgr, 1);
+      const t = new TutorialView(host, mgr, rival);
+      eq('the little mission is three balls', t.remainBalls.length, 3);
+      eq('and says so', t.missionText.txt.textContent,
+         'Hit 3 balls to complete this\ntutorial.');
+      /* GameMgr::Init 0x27EC: setName "Random" matches no set, so a virgin
+         save falls to "D" and fifty rivals -- the prefab's "10" is stale */
+      eq('the rivals are counted correctly', t.goal3.txt.textContent,
+         'Try to beat 50 of us!');
+      eq('the skip alert asks first',
+         t.skipAlert1.txt.textContent.indexOf('Confirm skip tutorial?') > 0, true);
+      ok('and the second half starts invisible', t.skipOk.alpha === 0);
+      eq('three alert stages', t.skipStage, 0);
+      t.destroy(); rival.destroy();
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

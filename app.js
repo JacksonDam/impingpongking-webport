@@ -27,7 +27,8 @@ const DB = {
           OGTournamentStageOrder: 0, IsTournamentComplete: false,
           TournamentStageRetryCount: {}, isEndlessEndterAnyMode: false,
           NumOfRateUsShow: 0, isWin3BallToPassShow: false,
-          isWin5BallToPassShow: false },
+          isWin5BallToPassShow: false, totalEnemyNum: 50, setName: 'D',
+          Tutorial_RetryCount: 0 },
   load() {
     try { Object.assign(this.data, JSON.parse(localStorage.getItem(this.key) || '{}')); }
     catch (e) { }
