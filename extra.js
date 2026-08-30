@@ -537,9 +537,29 @@ class TutorialView {
 
     while (!this.IsKnowTheRuleClick && alive()) await wait(50);
     if (!alive()) return;
+    await this.TutorialEndAnim(alive);
+    if (!alive()) return;
     /* Bridge.BridgeShowWhenEnterGame -> Reset_EnterGame -> BridgeHide */
-    if (!await W_(0.6)) return;
     this.mgr.onTutorialDone();
+  }
+
+  /* <TutorialEndAnim>c__Iterator3 0x3FB08 -- I'M READY clears the stage: the
+     four bubbles pop away 0.15 s apart on easeInBack, the rival lines slide
+     off to x = 2000, and the table and the player follow them off to -2000. */
+  async TutorialEndAnim(alive) {
+    const W_ = async t => { await wait(t * 1000); return alive(); };
+    for (const n of [this.imReady, this.imReadyShadow]) if (n) LT.alpha(n, 0, 0.25);
+    for (const d of [this.hi, this.ppk, this.goal, this.ready]) {
+      if (d) LT.scale(d, 0, 0.25).setEase(26);
+      if (!await W_(0.15)) return;
+    }
+    for (const l of this.lines) if (l) LT.moveLocalX(l, 2000, 0.3).setEase(26);
+    if (!await W_(0.15)) return;
+    const c = this.rival && this.rival.core;
+    if (c && c.table) LT.moveLocalX(c.table, -2000, 0.3).setEase(26);
+    if (!await W_(0.15)) return;
+    if (c && c.manA) LT.moveLocalX(c.manA, -2000, 0.3).setEase(26);
+    if (!await W_(0.7)) return;
   }
 }
 
