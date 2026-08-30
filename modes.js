@@ -1031,33 +1031,44 @@ class EndlessListView {
     this.main = s.n('EndlessModeList Group/MainObj');
     if (this.main) this.main.setActive(true);
     this.back = s.n('EndlessModeList Group/MainObj/BackBtnShadowBg Image');
-    this.btns = {};
+    const CTRL = s.comp('EndlessModeList Group', 'EndlessController') || {};
+    const N = r => (r && r.node) ? s.n(r.node) : null;
+    this.recommend = N(CTRL.RecommandImage);
+    this.recommendText = N(CTRL.RecommandText);
+    this.cards = {};
     const G_ = 'EndlessModeList Group/MainObj/Componet Group/';
     for (const [btn, sceneName] of Object.entries(MODE_OF_BTN)) {
       const n = s.n(G_ + btn);
       if (!n) continue;
-      this.btns[sceneName] = n;
-      /* each card's own ModeListComponent fills in the score and badge */
-      const cls = s.n(G_ + btn + '/Badge Image/Class Text');
-      const score = s.n(G_ + btn + '/Score Text');
-      const intro = s.n(G_ + btn + '/ModeIntroAlert Group');
-      if (intro) intro.setActive(false);
-      const best = parseFloat(DB.data['best_' + sceneName] || 0);
-      const timed = sceneName === 'ConcentrateModeScene';
-      if (score) score.setText(best ? (timed ? best.toFixed(2).replace('.', "'") : String(Math.round(best))) : '-');
-      if (cls) {
-        const table = SCORE_CLASSES[sceneName];
-        const k = table.find(x => best >= x.lo && best < x.hi);
-        cls.setText(best ? (k ? k.c : table[0].c) : '-');
-      }
+      this.cards[sceneName] = new ModeListComponent(s, G_ + btn, sceneName);
+    }
+    /* EndlessController::ShowEndlessModeList 0xAF88 */
+    for (const c of Object.values(this.cards)) { c.LoadData(); c.PlayAnimation(); }
+    if (DB.data.isEndlessEndterAnyMode) {
+      for (const n of [this.recommend, this.recommendText]) if (n) n.setEnabled(false);
+    } else if (this.recommend) {
+      this.recommend.setEnabled(true);
+      if (this.recommendText) this.recommendText.setEnabled(true);
+      LT.scale(this.recommend, [1, 1.05], 0.7).setEase(15).setLoopPingPong(-1);
     }
   }
-  destroy() { this.scene.destroy(); }
+  destroy() {
+    for (const c of Object.values(this.cards)) c.CloseAndReset();
+    this.scene.destroy();
+  }
+
+  get alertOpen() { return Object.values(this.cards).find(c => c.introShown) || null; }
 
   hit(x, y) {
-    for (const [sceneName, n] of Object.entries(this.btns)) {
-      const r = n.el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return sceneName;
+    const open = this.alertOpen;
+    if (open) {
+      if (open.hitOk(x, y)) { const m = open.OnOKBtnDown(); return m; }
+      return 'block';
+    }
+    for (const [sceneName, c] of Object.entries(this.cards)) {
+      if (!c.hitCard(x, y)) continue;
+      /* OnModeChoose: the first press on a card explains the test */
+      return c.OnModeChoose() ? sceneName : 'block';
     }
     if (this.back) {
       const r = this.back.el.getBoundingClientRect();
@@ -1067,4 +1078,163 @@ class EndlessListView {
   }
 }
 
-Object.assign(window, { EndlessListView, MODE_OF_BTN });
+/* ------------------------------------------------- ModeListComponentBase 0x4357
+ * One card in the IMPOSSIBLE TEST list.  The base carries the badge, the best
+ * score and the intro alert; the three subclasses differ only in the little
+ * animation each one plays and how it prints its score. */
+class ModeListComponent {
+  constructor(scene, base, sceneName) {
+    this.scene = scene; this.base = base; this.sceneName = sceneName;
+    const script = { EyesightModeScene: 'EyesightModeListComponent',
+                     ConcentrateModeScene: 'ConcentrateModeListComponent',
+                     InvertModeScene: 'InvertModeListComponent' }[sceneName];
+    const c = this.cfg = scene.comp(base, script) || {};
+    const N = r => (r && r.node) ? scene.n(r.node) : null;
+    this.node = scene.n(base);
+    this.classText = N(c.ClassText);
+    this.scoreText = N(c.ScoreText);
+    this.badgeBg = N(c.BadgeBgImage);
+    this.badgeGroup = N(c.BadgeGroup);
+    this.unitText = N(c.UnitText);
+    this.introGroup = N(c.ModeIntroGroup);
+    this.introBg = N(c.ModeIntroAlertBGImage);
+    this.introOk = N(c.ModeIntroAlertOKBtnImage);
+    this.man = N(c.ManImage);
+    this.effect = N(c.EffectImage);
+    this.leftMan = N(c.LeftManImage);
+    this.rightMan = N(c.RightManImage);
+    this.leftSurprise = N(c.LeftSurpriseImage);
+    this.rightSurprise = N(c.RightSurpriseImage);
+    this.eImages = (c.EImages || []).map(N).filter(Boolean);
+    if (this.introGroup) this.introGroup.setActive(false);
+    for (const n of [this.leftSurprise, this.rightSurprise]) if (n) n.setEnabled(false);
+    this.gen = 0;
+    this.introShown = false;
+  }
+
+  get dbKey() { return 'best_' + this.sceneName; }
+  get isTimed() { return this.sceneName === 'ConcentrateModeScene'; }
+
+  /* LoadData -- with nothing played the badge, score and unit are all off */
+  LoadData() {
+    const best = parseFloat(DB.data[this.dbKey] || 0);
+    const played = !!DB.data['played_' + this.sceneName];
+    if (!played) {
+      if (this.badgeGroup) this.badgeGroup.setActive(false);
+      if (this.scoreText) this.scoreText.setEnabled(false);
+      if (this.unitText) this.unitText.setEnabled(false);
+      return;
+    }
+    if (this.badgeGroup) this.badgeGroup.setActive(true);
+    if (this.scoreText) {
+      this.scoreText.setEnabled(true);
+      this.scoreText.setText(this.isTimed ? best.toFixed(1).replace('.', "'")
+                                          : String(Math.trunc(best)));
+    }
+    const table = SCORE_CLASSES[this.sceneName];
+    const k = table.find(x => best >= x.lo && best < x.hi) || table.find(x => x.c === 'S');
+    if (this.classText) this.classText.setText(k.c);
+    if (this.badgeBg) this.badgeBg.setColor(hexColor(k.bg));
+    if (this.unitText) this.unitText.setEnabled(true);
+  }
+
+  PlayAnimation() {
+    this.gen++;
+    if (this.sceneName === 'EyesightModeScene') this.EyesightAnim();
+    else if (this.sceneName === 'ConcentrateModeScene') {
+      if (this.man) LT.scale(this.man, [1, 1.1], 0.7).setEase(15).setLoopPingPong(-1);
+      LT.delayedCall(0.1, () => {
+        if (this.effect) LT.scale(this.effect, [1, 1.1], 0.7).setEase(15).setLoopPingPong(-1);
+      });
+    } else this.InvertAnim();
+  }
+  CloseAndReset() { this.gen++; }
+
+  /* EyesightModeListComponent/<ModeAnim>c__Iterator0 0xB4EC -- the eight E's
+     of an eye chart bob in pairs, 0.05 s apart, then a 2.5 s pause */
+  async EyesightAnim() {
+    const g = this.gen;
+    if (this.man) LT.scale(this.man, [1, 1.05], 1).setEase(15).setLoopPingPong(-1);
+    const homes = this.eImages.map(n => n.localPos.slice());
+    for (;;) {
+      for (let i = 0; i < 4; i++) {
+        if (g !== this.gen) return;
+        for (const j of [i, i + 4]) {
+          const n = this.eImages[j];
+          if (n && homes[j]) LT.moveLocalY(n, homes[j][1] + 20, 0.3).setEase(15).setLoopPingPong(1);
+        }
+        await wait(i === 3 ? 2500 : 50);
+      }
+    }
+  }
+
+  /* InvertModeListComponent/<ModeAnim>c__Iterator0 0xF294 -- the two men swap
+     places, look startled, and swap back */
+  async InvertAnim() {
+    const g = this.gen;
+    const L = this.leftMan, R = this.rightMan;
+    const pop = () => {
+      if (L) LT.scale(L, 1.05, 0.15).setLoopPingPong(1);
+      if (R) LT.scale(R, [-1.05, 1.05], 0.15).setLoopPingPong(1);
+    };
+    for (;;) {
+      pop();
+      await wait(600); if (g !== this.gen) return;
+      if (L) LT.moveLocalX(L, -309.1, 0.3).setEase(15);
+      if (R) LT.moveLocalX(R, -153, 0.3).setEase(15);
+      await wait(500); if (g !== this.gen) return;
+      for (const n of [this.leftSurprise, this.rightSurprise]) if (n) {
+        n.setEnabled(true);
+        LT.scale(n, 1.1, 0.1).setEase(15).setLoopPingPong(2);
+      }
+      await wait(800); if (g !== this.gen) return;
+      for (const n of [this.leftSurprise, this.rightSurprise]) if (n) n.setEnabled(false);
+      pop();
+      await wait(380); if (g !== this.gen) return;
+      pop();
+      await wait(600); if (g !== this.gen) return;
+      /* and back the other way round -- this is the Reverse test, after all */
+      if (L) LT.moveLocalX(L, -153, 0.3).setEase(15);
+      if (R) LT.moveLocalX(R, -309.1, 0.3).setEase(15);
+      await wait(1000); if (g !== this.gen) return;
+      pop();
+      await wait(380); if (g !== this.gen) return;
+    }
+  }
+
+  hitCard(x, y) {
+    if (!this.node) return false;
+    const r = this.node.el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+  hitOk(x, y) {
+    if (!this.introOk) return false;
+    const r = this.introOk.el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
+  /* OnModeChoose -- true once the intro has been seen */
+  OnModeChoose() {
+    const key = 'introShown_' + this.sceneName;
+    if (DB.data[key]) return true;
+    this.ShowModeIntroAlert();
+    DB.data[key] = true; DB.save();
+    return false;
+  }
+  /* ShowModeIntroAlert 0x4368 */
+  ShowModeIntroAlert() {
+    if (!this.introGroup) return;
+    if (this.node) this.node.setAsLastSibling();
+    this.introGroup.setActive(true);
+    this.introShown = true;
+    if (this.introBg) { this.introBg.setLocalScale(0, 0); LT.scale(this.introBg, 1, 0.2).setEase(27); }
+  }
+  /* OnOKBtnDown 0x43C2 */
+  OnOKBtnDown() {
+    if (this.introGroup) this.introGroup.setActive(false);
+    this.introShown = false;
+    return this.sceneName;
+  }
+}
+
+Object.assign(window, { EndlessListView, ModeListComponent, MODE_OF_BTN });

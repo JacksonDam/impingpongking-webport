@@ -307,6 +307,17 @@ class SettingsView {
     this.volume = N(this.cfg.VolumeBtnImage);
     this.howTo = N(this.cfg.HowToPlayPanel);
     this.credits = N(this.cfg.CreditPanel);
+    this.volumeBtn = N(this.cfg.VolumeBtnImage);
+    this.fbBtn = N(this.cfg.FacebookBtnImage);
+    this.rateBtn = N(this.cfg.RateUsBtnImage);
+    this.creditBtn = N(this.cfg.CreditBtnImage);
+    this.noAdsBtn = N(this.cfg.NoAdsImage);
+    this.restoreBtn = N(this.cfg.RestoreBtnImage);
+    this.howToBtn = s.n('Setting Group/SettingBg Image/HowToPlay Image');
+    this.creditsClose = s.n('Setting Group/Credits Panel/Cross Image');
+    this.creditsContent = s.n('Setting Group/Credits Panel/Viewport/Content');
+    this.howToOk = s.n('Setting Group/HowToPlay Panel/HowToPlayScaling Group/OKShadowBtn Image');
+    this.howToPlay = new HowToPlayInstruction(s, 'Setting Group/HowToPlay Panel');
     this.IsSettingShow = false;
     this.IsEnableSfx = true;
     if (this.list) { this.listHome = this.list.localPos.slice(); this.list.setActive(false); }
@@ -345,6 +356,91 @@ class SettingsView {
     const r = this.btn.el.getBoundingClientRect();
     const pad = 40;
     return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad;
+  }
+
+  inside(n, x, y) {
+    if (!n || !n.active) return false;
+    const r = n.el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
+  /* the six buttons in the drawer, plus the two panels they open.  Returns the
+     id of whatever was hit, or 'block' while a panel is up. */
+  listHit(x, y) {
+    if (this.howTo && this.howTo.active) {
+      if (this.inside(this.howToOk, x, y)) { this.OnHowToPlayCloseBtnDown(); return 'howto-close'; }
+      return 'block';
+    }
+    if (this.credits && this.credits.active) {
+      if (this.inside(this.creditsClose, x, y)) { this.OnCreditCloseBtnDown(); return 'credit-close'; }
+      return 'block';
+    }
+    if (!this.IsSettingShow) return null;
+    if (this.inside(this.volumeBtn, x, y)) { this.OnVolumeBtnDown(); return 'volume'; }
+    if (this.inside(this.fbBtn, x, y)) { this.OnFacebookBtnDown(); return 'facebook'; }
+    if (this.inside(this.rateBtn, x, y)) { this.OnRateUsBtnDown(); return 'rate'; }
+    if (this.inside(this.creditBtn, x, y)) { this.OnCreditBtnDown(); return 'credit'; }
+    if (this.inside(this.howToBtn, x, y)) { this.OnHowToPlayBtnDown(); return 'howto'; }
+    if (this.inside(this.noAdsBtn, x, y)) { this.OnNoAdsDown(); return 'noads'; }
+    if (this.inside(this.restoreBtn, x, y)) { this.OnRestoreBtnDown(); return 'restore'; }
+    return null;
+  }
+
+  /* Table_Settings::OnVolumeBtnDown 0x40E94 */
+  OnVolumeBtnDown() {
+    this.IsEnableSfx = !this.IsEnableSfx;
+    DB.data.IsEnableSfx = this.IsEnableSfx;
+    DB.save();
+    Audio_.setEnabled(this.IsEnableSfx);
+    if (this.volumeBtn) this.volumeBtn.setSprite(this.IsEnableSfx ? this.cfg.UnMuteSprite : this.cfg.MuteSprite);
+  }
+  /* OnFacebookBtnDown 0x40F2B */
+  OnFacebookBtnDown() { window.open('https://www.facebook.com/OrangenoseStudio/', '_blank'); }
+  /* OnRateUsBtnDown 0x40F37 -- TechMgr.RateUs is a native store prompt, and
+     there is no store here; the counter it keeps is real, the prompt is not. */
+  OnRateUsBtnDown() { DB.data.NumOfRateUsShow = (DB.data.NumOfRateUsShow | 0) + 1; DB.save(); }
+  /* OnNoAdsDown 0x40F9C -- with ads already removed the button just bounces.
+     The port has no ads and no billing, so it always takes that branch. */
+  OnNoAdsDown() { if (this.noAdsBtn) LT.scale(this.noAdsBtn, 1.05, 0.35).setLoopPingPong(2); }
+  /* OnRestoreBtnDown 0x40FFC -- TechMgr.Billing.RestorePurchases(); inert */
+  OnRestoreBtnDown() { }
+
+  /* OnCreditBtnDown 0x40F5A -- the panel scrolls its content over 20 s */
+  OnCreditBtnDown() {
+    if (!this.credits) return;
+    this.credits.setActive(true);
+    this.mgr.curSceneState = SceneEnum.HomeScene_Credit;
+    if (this.creditsContent) {
+      const home = this.creditsContent.localPos.slice();
+      this._creditHome = home;
+      /* LeanTween.value(panel, m__A, 1, 0, 20) drives the ScrollRect's
+         verticalNormalizedPosition from 1 to 0 over twenty seconds, which
+         moves the content up by (content height - viewport height) */
+      const span = Math.max(0, this.creditsContent.rect.h - H);
+      this.creditsContent.setLocalPos(home[0], home[1]);
+      LT.value(0, 1, 20, t => this.creditsContent.setLocalPos(home[0], home[1] + span * t));
+    }
+  }
+  /* OnCreditCloseBtnDown 0x41094 */
+  OnCreditCloseBtnDown() {
+    if (this.credits) this.credits.setActive(false);
+    if (this.creditsContent && this._creditHome)
+      this.creditsContent.setLocalPos(this._creditHome[0], this._creditHome[1]);
+    this.mgr.curSceneState = SceneEnum.HomeScene;
+  }
+  /* OnHowToPlayBtnDown 0x410B4 */
+  OnHowToPlayBtnDown() {
+    if (!this.howTo) return;
+    this.howTo.setActive(true);
+    this.mgr.curSceneState = SceneEnum.HomeScene_HowToPlay;
+    this.howToPlay.ShowHowToPlay();
+    if (this.howToOk) LT.scale(this.howToOk, 1.03, 1).setEase(15).setLoopPingPong(-1);
+  }
+  /* OnHowToPlayCloseBtnDown 0x410D2 */
+  OnHowToPlayCloseBtnDown() {
+    this.howToPlay.stop();
+    if (this.howTo) this.howTo.setActive(false);
+    this.mgr.curSceneState = SceneEnum.HomeScene;
   }
 
   /* Table_Settings::OnSettingBtnDown 0x40600 */
@@ -395,3 +491,92 @@ class SettingsView {
 }
 
 Object.assign(window, { Animator, SplashScene, HomeSceneView, SettingsView });
+
+/* ================================================ HowToPlayInstruction 0x3A61
+ * The panel behind the drawer's "?" button: a small still of the table with a
+ * finger that taps HIT L three times, then HIT R three times, forever.  The
+ * two stick men do not animate -- only the finger, the button under it and the
+ * arrow showing which way the ball came. */
+class HowToPlayInstruction {
+  constructor(scene, base) {
+    this.scene = scene;
+    const F = base + '/HowToPlayScaling Group/Frame Image/';
+    this.scaling = scene.n(base + '/HowToPlayScaling Group');
+    this.instruction = scene.n(F + 'Instruction Image');
+    this.leftFinger = scene.n(F + 'LeftFinger Image');
+    this.rightFinger = scene.n(F + 'RigjtFinger Image');       // [sic] the typo is the APK's
+    this.leftLine = scene.n(F + 'LeftBallLine Image');
+    this.rightLine = scene.n(F + 'RIghtBallLine Image');       // [sic]
+    this.manA = scene.n(F + 'ManA Image');
+    this.hitL = scene.n(F + 'HitLeftBtn Image');
+    this.hitLShadow = scene.n(F + 'HitLeftShadow Image');
+    this.hitR = scene.n(F + 'HitRightBtn Image');
+    this.hitRShadow = scene.n(F + 'HitRightShadow Image');
+    const c = scene.comp(base, 'HowToPlayInstruction') || {};
+    this.cfg = c;
+    this.gen = 0;
+  }
+  stop() { this.gen++; }
+
+  ShowHowToPlay() {
+    if (this.scaling) this.scaling.setLocalScale(1, 1);
+    this.HowToPlayAnim();
+  }
+
+  /* <HowToPlayAnim>c__Iterator0 0x3B1C -- a sixteen-step loop */
+  async HowToPlayAnim() {
+    const g = ++this.gen;
+    const alive = () => g === this.gen;
+    const C = this.cfg;
+    const up = n => { if (n && C.FingerUpSprite) n.setSprite(C.FingerUpSprite); };
+    const down = n => { if (n && C.FingerDownSprite) n.setSprite(C.FingerDownSprite); };
+    if (this.rightLine) this.rightLine.setColor([1, 1, 1, 0]);
+    if (this.instruction && C.HitLeftInstructionSprite) this.instruction.setSprite(C.HitLeftInstructionSprite);
+    if (this.rightFinger) this.rightFinger.setColor([1, 1, 1, 0]);
+    for (;;) {
+      if (this.leftLine) LT.alpha(this.leftLine, 1, 0.2);
+      if (this.leftFinger) LT.alpha(this.leftFinger, 1, 0.5);
+      if (this.instruction) LT.alpha(this.instruction, 1, 0.5);
+      await wait(1000); if (!alive()) return;
+      up(this.leftFinger);
+      await wait(300); if (!alive()) return;
+      /* three taps on HIT L, the button dipping 13 px each time */
+      for (let i = 0; i < 2; i++) {
+        if (this.manA) this.manA.setLocalPos(-269, -202);
+        down(this.leftFinger);
+        if (this.hitL) this.hitL.setLocalPos(-264.63, -520.82);
+        if (this.hitLShadow) this.hitLShadow.setEnabled(false);
+        await wait(300); if (!alive()) return;
+        up(this.leftFinger);
+        if (this.hitL) this.hitL.setLocalPos(-264.63, -507.82);
+        if (this.hitLShadow) this.hitLShadow.setEnabled(true);
+        await wait(i === 1 ? 500 : 300); if (!alive()) return;
+      }
+      for (const n of [this.leftFinger, this.instruction, this.leftLine]) if (n) LT.alpha(n, 0, 0.5);
+      await wait(500); if (!alive()) return;
+      if (this.instruction && C.HitRightInstructionSprite) this.instruction.setSprite(C.HitRightInstructionSprite);
+      await wait(300); if (!alive()) return;
+      for (const n of [this.rightFinger, this.instruction, this.rightLine]) if (n) LT.alpha(n, 1, 0.5);
+      await wait(500); if (!alive()) return;
+      up(this.rightFinger);
+      await wait(300); if (!alive()) return;
+      for (let i = 0; i < 2; i++) {
+        if (this.manA) this.manA.setLocalPos(5, -202);
+        down(this.rightFinger);
+        if (this.hitR) this.hitR.setLocalPos(261, -520.82);
+        if (this.hitRShadow) this.hitRShadow.setEnabled(false);
+        await wait(300); if (!alive()) return;
+        up(this.rightFinger);
+        if (this.hitR) this.hitR.setLocalPos(261, -507.82);
+        if (this.hitRShadow) this.hitRShadow.setEnabled(true);
+        await wait(i === 1 ? 500 : 300); if (!alive()) return;
+      }
+      for (const n of [this.rightFinger, this.instruction, this.rightLine]) if (n) LT.alpha(n, 0, 0.5);
+      await wait(500); if (!alive()) return;
+      if (this.instruction && C.HitLeftInstructionSprite) this.instruction.setSprite(C.HitLeftInstructionSprite);
+      await wait(300); if (!alive()) return;
+    }
+  }
+}
+
+Object.assign(window, { HowToPlayInstruction });

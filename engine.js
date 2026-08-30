@@ -33,6 +33,19 @@ const RICH_NAMED = {
  * counts disagree.  Keep the trailing blank line. */
 function textForDom(s) { return /\n$/.test(s) ? s + '\u200b' : s; }
 
+/* Put the text into a single .rt child, so a <color> or <size> span cannot
+ * turn the flex container's paragraph into a row of flex items. */
+function setTxtContent(el, str, align) {
+  const t = textForDom(str), h = richText(t);
+  const sp = document.createElement('span');
+  sp.className = 'rt';
+  if (h === null) sp.textContent = t; else sp.innerHTML = h;
+  if (align !== undefined)
+    sp.style.textAlign = ['left', 'center', 'right'][align % 3] || 'left';
+  el.textContent = '';
+  el.appendChild(sp);
+}
+
 function richText(s) {
   const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (!/<(b|i|size|color)\b|<\/(b|i|size|color)>/i.test(s)) return null;
@@ -209,8 +222,7 @@ class Node {
   get alpha() { return this.tint[3]; }
 
   setText(s) {
-    if (this.txt) { const t = textForDom(s), h = richText(t);
-                    if (h === null) this.txt.textContent = t; else this.txt.innerHTML = h; }
+    if (this.txt) setTxtContent(this.txt, s, this.node.text && this.node.text.align);
     return this;
   }
   setFontSize(px) { if (this.txt) this.txt.style.fontSize = px + 'px'; return this; }
@@ -533,8 +545,7 @@ class Scene {
       if (n.text) {
         const tx = document.createElement('div');
         tx.className = 'txt';
-        { const t = textForDom(n.text.text), h = richText(t);
-          if (h === null) tx.textContent = t; else tx.innerHTML = h; }
+        setTxtContent(tx, n.text.text, n.text.align);
         Object.assign(tx.style, {
           width: '100%', height: '100%',
           fontSize: `${n.text.size}px`,
@@ -615,6 +626,11 @@ const Audio_ = {
     this.bgm = a;
   },
   setBgmVolume(v) { this.bgmVol = v; if (this.bgm) this.bgm.volume = this.bgmOn ? clamp01(v) : 0; },
+  /* Audios::EnabledSfx / EnabledBgm -- the mute button drives both */
+  setEnabled(on) {
+    this.sfxOn = !!on; this.bgmOn = !!on;
+    if (this.bgm) this.bgm.volume = this.bgmOn ? clamp01(this.bgmVol) : 0;
+  },
   stopBgm() { if (this.bgm) { this.bgm.pause(); this.bgm = null; } this._pendingBgm = null; },
 };
 

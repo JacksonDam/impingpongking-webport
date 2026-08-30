@@ -25,7 +25,8 @@ const DB = {
           RivalMode_CurShareGIFIndex: 0, dateTimeFirstActive: 0,
           RivalMode_LastShareShowsUp: 0, OutterStageRetryCount: {},
           OGTournamentStageOrder: 0, IsTournamentComplete: false,
-          TournamentStageRetryCount: {} },
+          TournamentStageRetryCount: {}, isEndlessEndterAnyMode: false,
+          NumOfRateUsShow: 0 },
   load() {
     try { Object.assign(this.data, JSON.parse(localStorage.getItem(this.key) || '{}')); }
     catch (e) { }
@@ -195,6 +196,7 @@ class GameMgr {
     this.settings.scene.root.style.zIndex = 5;
     this.settings.ChangeSettingSpriteToPauseSprite();
     this.settings.SettingBtnShow(0.1);
+    this.db['played_' + sceneName] = true; DB.save();
     const v = new (MODE_VIEW[sceneName])(this.stage, this, sceneName);
     this.stage.insertBefore(v.scene.root, this.settings.scene.root);
     this.view = v;
@@ -269,7 +271,7 @@ class GameMgr {
     if (this.view instanceof EndlessListView) {
       const h = this.view.hit(x, y);
       if (h === 'back') this.goHome();
-      else if (h) this.goMode(h);
+      else if (h && h !== 'block') { this.db.isEndlessEndterAnyMode = true; DB.save(); this.goMode(h); }
       return;
     }
     if (this.view instanceof TournamentInfoView) {
@@ -296,6 +298,17 @@ class GameMgr {
       if (h === 'watch') { this.view.revive.press(); LT.delayedCall(0.12, () => this.view.revive.take()); }
       else if (h === 'no') this.view.revive.fadeOut();
       return;
+    }
+    /* a home-screen alert blocks everything under it */
+    if (this.view instanceof HomeSceneView && this.view.alert) {
+      const h = this.view.hit(x, y);
+      if (h === 'endless-ok') this.enterEndless();
+      return;
+    }
+    /* the drawer's own buttons, and the two panels they open, come first */
+    if (this.settings) {
+      const h = this.settings.listHit(x, y);
+      if (h) return;
     }
     if (this.settings && this.settings.hitTest(x, y)) {
       this.settings.onSettingBtnDown(this.curSceneState); return;

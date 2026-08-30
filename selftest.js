@@ -552,6 +552,62 @@
       Object.assign(db, JSON.parse(keep));
     }
 
+    /* --------------------------------- text is one flex item, not several
+     * .txt is a flex box (that is how Unity's nine TextAnchors are done), so a
+     * <color> span inside it used to split the paragraph into three flex items
+     * laid out in a ROW.  Everything now goes into one .rt child. */
+    {
+      const d = document.createElement('div');
+      d.className = 'txt';
+      setTxtContent(d, 'a <color=#FFCB39FF>b</color> c', 0);
+      eq('rich text is one child', d.children.length, 1);
+      eq('and it is the .rt span', d.firstChild.className, 'rt');
+      eq('the colour survives inside it', d.firstChild.children.length, 1);
+      setTxtContent(d, 'plain', 4);
+      eq('plain text is wrapped too', d.children.length, 1);
+      eq('alignment reaches the span', d.firstChild.style.textAlign, 'center');
+    }
+
+    /* --------------------------------------- the Impossible Test card list */
+    {
+      const host = document.createElement('div');
+      const keep = JSON.stringify(DB.data);
+      delete DB.data.played_EyesightModeScene;
+      let v = new EndlessListView(host, mgr);
+      eq('three cards', Object.keys(v.cards).length, 3);
+      ok('an unplayed card hides its badge', !v.cards.EyesightModeScene.badgeGroup.active);
+      v.destroy();
+      DB.data.played_EyesightModeScene = true;
+      DB.data.best_EyesightModeScene = 14;
+      v = new EndlessListView(host, mgr);
+      const c = v.cards.EyesightModeScene;
+      ok('a played card shows it', c.badgeGroup.active);
+      eq('with the score', c.scoreText.txt.textContent, '14');
+      eq('and the class it earned', c.classText.txt.textContent, 'S');
+      /* the first press explains the test, the second starts it */
+      delete DB.data.introShown_EyesightModeScene;
+      ok('the first choice shows the intro', !c.OnModeChoose());
+      ok('the intro alert is up', c.introShown);
+      eq('OK returns the mode', c.OnOKBtnDown(), 'EyesightModeScene');
+      ok('the second choice goes straight in', c.OnModeChoose());
+      v.destroy();
+      Object.assign(DB.data, JSON.parse(keep));
+    }
+
+    /* the drawer's own buttons */
+    {
+      const st = mgr.settings || new SettingsView(document.createElement('div'), mgr);
+      const before = st.IsEnableSfx;
+      st.OnVolumeBtnDown();
+      eq('mute flips the flag', st.IsEnableSfx, !before);
+      eq('and mutes the audio', Audio_.sfxOn, !before);
+      eq('and swaps the sprite', st.volumeBtn._spr,
+         (!before) ? st.cfg.UnMuteSprite : st.cfg.MuteSprite);
+      st.OnVolumeBtnDown();
+      eq('and back again', st.IsEnableSfx, before);
+      ok('how-to-play and credits panels exist', !!st.howTo && !!st.credits);
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

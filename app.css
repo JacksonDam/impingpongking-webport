@@ -24,6 +24,9 @@ html, body {
   image-rendering: -webkit-optimize-contrast;
 }
 #stage .txt { display: flex; white-space: pre-wrap; line-height: 1; }
+/* the run of text is ONE flex item: a <color> tag inside it would otherwise
+   split the paragraph into several items and lay them out side by side */
+#stage .txt > .rt { white-space: pre-wrap; max-width: 100%; }
 #boot {
   position: fixed; inset: auto 0 24px 0; text-align: center;
   color: #888; font: 13px/1.6 ui-monospace, Menlo, monospace; pointer-events: none;
