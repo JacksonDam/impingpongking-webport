@@ -49,7 +49,10 @@ The whole first-run experience, in order:
    Please DON'T tell your friends about this game!", the heart, twenty seconds
    of credits and the whole studio holding up a LOVE placard;
 8. the **PPK Impossible Test** — three endless modes with their own intro
-   alerts, score classes and result pages:
+   alerts, score classes and result pages. Its button on the home screen
+   unlocks exactly as the APK's does: the day *after* you first ran the game
+   (`numOfDaysInstalled >= EndlessModeShowFromDay`), once the tutorial is past.
+   `?days=1` skips the wait, and `?goto=endless` goes straight there.
    **Eyesight**, where every point you win shrinks the whole play area by 15%;
    **Concentration**, one button, every ball to the same place, scored in
    seconds survived; and **Reverse**, where two seconds in a pair of hands
