@@ -452,6 +452,7 @@ class RivalModeModel {
     this.curRoundData = this.firstRoundData;
     this.nextRoundData = this.firstRoundData;
     this.CurLevelGroupSequence = [];
+    this.UsedGroupSequence = [];
   }
 
   /* RivalModeModel::LoadLevelProb 0x2EAA4, totalEnemyNum == 50 (a virgin save
@@ -480,6 +481,7 @@ class RivalModeModel {
     this.enemyName = L.EnemyName;
 
     const S = this.CurLevelGroupSequence = [];
+    this.UsedGroupSequence = [];
     const add = (g, n) => { for (let i = 0; i < n; i++) S.push(g); };
     if (this.relaxIndex >= 1 && this.relaxIndex <= 4) { add(`Group_Relax${this.relaxIndex}`, this.Goal); return; }
     const g = this.Goal;
@@ -541,11 +543,19 @@ class RivalModeModel {
     const fv = g.first[randRange(0, g.first.length)];
     const sv = g.second[randRange(0, g.second.length)];
     S.splice(S.indexOf(name), 1);
+    (this.UsedGroupSequence = this.UsedGroupSequence || []).push(name);
     this.curRoundData = round ? this.nextRoundData : this.BallData(this.firstRoundData, fv, sv);
     this.nextRoundData = this.BallData(this.curRoundData, fv, sv);
     return this.curRoundData;
   }
   Level_GetNextRoundData() { return this.nextRoundData; }
+
+  /* RivalModeModel::RemakeLevelGroupSequence -- a revive puts every ball the
+     match has already used back into the bag */
+  RemakeLevelGroupSequence() {
+    for (const n of (this.UsedGroupSequence || [])) this.CurLevelGroupSequence.push(n);
+    this.UsedGroupSequence = [];
+  }
 
   /* RivalModeModel::Init 0x2E9xx -- rebuilds the group dictionary from the two
      baked JSON blobs.  Idempotent; the scenes call it on every entry. */
@@ -715,6 +725,9 @@ class RivalModeSceneView {
     this.BgColors = C.BgColors || ['FFCB39'];
 
     this.bridge = new BridgeView(s, mgr, this.tour ? 'tournament' : 'test');
+    this.revive = new ReviveView(s, mgr);
+    this.revive.onReward = () => this.Revive_VideoReward();
+    this.revive.onNoThanks = () => this.Revive_NoThanksClick();
     this.hideChrome();
     this.wire();
   }
@@ -1106,14 +1119,16 @@ class RivalModeSceneView {
   /* RivalModeScene/<PlayerScorePadFlip>c__Iterator4 (and its Enemy twin): the
      pad folds shut over 0.12 s on easeInSine, the number changes behind it, and
      it unfolds over 0.12 s on easeOutSine -- a flip-card. */
-  async ScorePadFlip(which) {
+  async ScorePadFlip(which, fromOverride, toOverride) {
     const P = 'Canvas/Top Group/' + (which === 'player'
       ? 'PlayerScorePad Group' : 'EnemyScorePadTotal Group');
     const longG = this.scene.n(P + (which === 'player' ? '/PlayerScoreLong Group' : '/EnemyScoreLong Group'));
     const topG = this.scene.n(P + (which === 'player' ? '/PlayerScoreTop Group' : '/EnemyScoreTop Group'));
     const botG = this.scene.n(P + (which === 'player' ? '/PlayerScoreBottom Group' : '/EnemyScoreBottom Group'));
     const total = which === 'player' ? this.playerScoreText : this.enemyScoreText;
-    const score = which === 'player' ? this.PlayerScore : this.EnemyScore;
+    const score = (toOverride !== undefined) ? toOverride
+                : (which === 'player' ? this.PlayerScore : this.EnemyScore);
+    const prev = (fromOverride !== undefined) ? fromOverride : score - 1;
     const topT = this.scene.n(P + (which === 'player'
       ? '/PlayerScoreTop Group/PlayerScorePad Image (2)/PlayerScore Text'
       : '/EnemyScoreTop Group/PlayerScorePad Image (2)/PlayerScore Text'));
@@ -1123,7 +1138,7 @@ class RivalModeSceneView {
     if (!longG) { if (total) total.setText(String(score)); return; }
     if (topG) topG.setActive(true);
     if (botG) botG.setActive(true);
-    if (botT) botT.setText(String(score - 1));
+    if (botT) botT.setText(String(prev));
     if (topT) topT.setText(String(score));
     await wait(16);
     LT.scale(longG, [1, 0], 0.12).setEase(14);
@@ -1198,6 +1213,16 @@ class RivalModeSceneView {
     }
   }
 
+  /* LoseAnim 0x0AB7: one ball from losing the match, and you have not already
+     used it this match, and you are past the first rival -- the game offers you
+     the ball back.  (The APK also requires Ad.HasVideo(); see ReviveView.) */
+  get reviveIsDue() {
+    if (this.isThisMatchAlreadyRevive) return false;
+    if (DB.data.OutterStageOrder <= 0) return false;
+    const p = this.PlayerScore;
+    return (this.matchGoal === 3) ? (p === 2) : (p === 3 || p === 4);
+  }
+
   onRallyEnd() {
     const won = this.won, lost = this.lost;
     this.won = this.lost = false;
@@ -1207,9 +1232,78 @@ class RivalModeSceneView {
       if (c.manBSurprise) c.manBSurprise.setEnabled(false);
       if (this.winLoseText) this.winLoseText.setEnabled(false);
       if (won && this.PlayerScore >= this.matchGoal) { this.mgr.onMatchWon(this.stageOrder); return; }
-      if (lost && this.EnemyScore >= this.matchGoal) { this.mgr.onMatchLost(this.stageOrder); return; }
+      if (lost && this.EnemyScore >= this.matchGoal) {
+        if (this.reviveIsDue) {
+          this.isThisMatchAlreadyRevive = true;
+          if (this.mgr.settings) this.mgr.settings.SettingBtnHide(0.2);
+          this.revive.ShowUpReviveScene();
+          return;
+        }
+        this.mgr.onMatchLost(this.stageOrder);
+        return;
+      }
       this.Reset_WinBall();
     });
+  }
+
+  Revive_NoThanksClick() { LT.delayedCall(0.5, () => this.mgr.onMatchLost(this.stageOrder)); }
+
+  /* RivalModeScene::Revive_VideoReward 0x314xx + <ReviveAnim>c__Iterator2 */
+  async Revive_VideoReward() {
+    const c = this.core;
+    const trail = c.trailNode[c.curTrail];
+    if (trail) trail.setActive(false);
+    c.SequenceState = SeqState.From;
+    if (c.manA) { c.manA.setEnabled(true); c.manA.setSprite(c.cfg.NormalSwingSequence[0]); c.manA.setLocalPos(-387.6, -240); }
+    if (c.manB) { c.manB.setEnabled(true); c.manB.setSprite(c.cfg.NormalSwingSequence[0]); c.manB.setLocalPos(543.93, 489.1); }
+    if (c.manAWinLose) c.manAWinLose.setEnabled(false);
+    if (c.manBWinLose) c.manBWinLose.setEnabled(false);
+    c.ManASwingSequenceTmp = c.cfg.NormalSwingSequence;
+    if (c.table) c.table.setSprite(c.cfg.NormalTableSprite);
+    c.ManACurPos = 'A1'; c.ManBCurPos = 'B1'; c.ManAHitPos = 'A1';
+    if (c.missText) c.missText.setColor(this.hex('16161600'));
+    const col = this.hex(this.bgHex(this.stageOrder));
+    if (this.bg) this.bg.setColor(col);
+    for (const n of this.padBgs) n.setColor(col);
+    for (const n of [this.playerPad, this.enemyPad, this.playerScoreText,
+                     this.enemyScoreText, this.dotText]) if (n) n.setColor(this.hex('161616FF'));
+    if (this.winLoseText) this.winLoseText.setColor(this.hex('16161600'));
+    await this.ReviveAnim();
+  }
+
+  /* <ReviveAnim>c__Iterator2 0x39xxx -- a hand reaches in and flips the last
+     point back off the enemy's pad */
+  async ReviveAnim() {
+    const g = ++this.core.gen; this.core.gen = g - 1;   // do not disturb the rally gen
+    const f = this.revive.finger;
+    if (f) { f.setActive(true); f.setAsFirstSibling(); LT.moveLocalX(f, 583, 0.7).setEase(15); }
+    await wait(750);
+    if (f) LT.moveLocalY(f, 940, 0.12);
+    this.EnemyScorePadFlipBack();
+    await wait(60);
+    if (f) f.setAsLastSibling();
+    await wait(300);
+    if (f) LT.moveLocalX(f, 1500, 0.5).setEase(15)
+             .setOnComplete(() => f.setLocalPos(f.localPos[0], 833));
+    await wait(500);
+    this.EnemyScore--;
+    this.RoundCount = 0;
+    this.model.RemakeLevelGroupSequence();
+    this.core.StopRun();
+    this.core.StartRun(true);
+    await wait(1750);
+    if (f) f.setActive(false);
+    if (this.mgr.settings) this.mgr.settings.SettingBtnShow(0.2);
+    this.TouchBlockEnable(false);
+    this.ShowHitBtn(1);
+  }
+
+  /* the enemy pad flips back down a number -- EnemyScorePadFlipBack */
+  EnemyScorePadFlipBack() {
+    const from = this.EnemyScore, to = this.EnemyScore - 1;
+    this._padFlipOverride = [from, to];
+    this.ScorePadFlip('enemy', from, to);
+    this._padFlipOverride = null;
   }
 
   /* RivalModeScene::Reset_WinBall 0x33964 */
@@ -1305,6 +1399,109 @@ class RivalModeSceneView {
  * challenger card before a match, the pause overlay, and the "beaten" card
  * where the rival says his line.  RivalModeScene::Pause 0x35048 activates it,
  * so this is also what a paused rally looks like. */
+/* ============================================================ Revive 0x24A37
+ * "One More Chance?".  The offer appears when you are one ball from losing a
+ * match: a ball bounces in the middle of a black overlay, and a counter runs
+ * down from 10 -- one tick per bounce, 0.45 s up and 0.45 s down -- while you
+ * decide.  Reaching zero is the same as No Thanks.
+ *
+ * Deviation, and the only one in this file: the original gates the offer on
+ * TechMgr.Ad.HasVideo() and pays it out through a rewarded video.  There is no
+ * ad network here, so the port takes IsTestingRevive's branch -- OnWatchVideoUp
+ * 0x24CDF calls OnVideoReward directly when that flag is set -- and the offer
+ * appears whenever the score condition is met. */
+class ReviveView {
+  constructor(scene, mgr) {
+    this.scene = scene; this.mgr = mgr;
+    this.cfg = scene.comp('Canvas/Revive Group', 'Revive') || {};
+    const N = r => (r && r.node) ? scene.n(r.node) : null;
+    this.group = scene.n('Canvas/Revive Group');
+    this.oneMore = N(this.cfg.OneMoreBallText);
+    this.countDown = N(this.cfg.CountDownText);
+    this.noThanks = N(this.cfg.NoThanksText);
+    this.bg = N(this.cfg.BgImage);
+    this.ballShadow = N(this.cfg.BallShadowImage);
+    this.ball = N(this.cfg.BallImage);
+    this.watch = N(this.cfg.WatchVideoImage);
+    this.watchShadow = N(this.cfg.WatchVideoShadowImage);
+    this.finger = scene.n('Canvas/Top Group/ReviveFinger Image');
+    this.counter = 10;
+    this.gen = 0;
+    if (this.group) this.group.setActive(false);
+    if (this.ball) this.ballHome = this.ball.localPos.slice();
+    if (this.group) this.groupHome = this.group.localPos.slice();
+  }
+  get shown() { return !!(this.group && this.group.active); }
+
+  /* Revive::ShowUpReviveScene 0x24BD4 + <ReviveCountDown>c__Iterator0 0x24EAC */
+  async ShowUpReviveScene() {
+    const g = ++this.gen;
+    this.counter = 10;
+    if (!this.group) return;
+    this.group.setActive(true);
+    this.group.setLocalPos(2000, 0);
+    if (this.countDown) this.countDown.setText('10');
+    if (this.oneMore) this.oneMore.setColor([1, 1, 1, 1]);
+    if (this.countDown) this.countDown.setColor([1, 1, 1, 0.3]);
+    if (this.noThanks) this.noThanks.setColor([1, 1, 1, 1]);
+    if (this.bg) this.bg.setColor([0, 0, 0, 0.85]);
+    if (this.ball) this.ball.setColor([1, 1, 1, 1]);
+    if (this.ballShadow) this.ballShadow.setColor([1, 1, 1, 0.2]);
+    if (this.watch) this.watch.setColor([1, 1, 1, 1]);
+    if (this.watchShadow) this.watchShadow.setColor([1, 1, 1, 0.2]);
+    await wait(16);
+    if (g !== this.gen) return;
+    LT.moveLocalX(this.group, 0, 0.35).setEase(12);
+    for (;;) {
+      /* down 0.45 s on easeInQuad, up 0.45 s on easeOutQuad; the shadow's
+         sizeDelta widens as the ball falls */
+      if (this.ball) LT.moveLocalY(this.ball, -23, 0.45).setEase(3);
+      if (this.ballShadow) LT.value(67.88, 107.93, 0.45, w => this.ballShadow.setSize(w, 32.36)).setEase(3);
+      await wait(450);
+      if (g !== this.gen) return;
+      this.counter--;
+      if (this.countDown) this.countDown.setText(String(this.counter));
+      if (this.counter === 0) { this.fadeOut(); return; }
+      if (this.ball) LT.moveLocalY(this.ball, 496.5, 0.45).setEase(2);
+      if (this.ballShadow) LT.value(107.93, 67.88, 0.45, w => this.ballShadow.setSize(w, 32.36)).setEase(2);
+      await wait(450);
+      if (g !== this.gen) return;
+    }
+  }
+
+  /* Revive::OnNoThanksClick 0x24D20 and the counter reaching zero share this */
+  async fadeOut() {
+    const g = this.gen;
+    for (const n of [this.oneMore, this.countDown, this.noThanks, this.bg,
+                     this.ballShadow, this.ball, this.watch, this.watchShadow])
+      if (n) LT.alpha(n, 0, 0.4);
+    await wait(400);
+    if (g !== this.gen) return;
+    this.gen++;
+    if (this.group) { this.group.setLocalPos(2000, 0); this.group.setActive(false); }
+    if (this.onNoThanks) this.onNoThanks();
+  }
+
+  hit(x, y) {
+    if (!this.shown) return null;
+    for (const [n, id] of [[this.watch, 'watch'], [this.noThanks, 'no']]) {
+      if (!n) continue;
+      const r = n.el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return id;
+    }
+    return 'block';
+  }
+  /* OnWatchVideoDown 0x24CB6 -- the button presses into the page */
+  press() { if (this.watch) LT.moveLocalY(this.watch, -497, 0.05); if (this.watchShadow) this.watchShadow.setEnabled(false); }
+  take() {
+    this.gen++;
+    if (this.watchShadow) this.watchShadow.setEnabled(true);
+    if (this.group) { this.group.setLocalPos(2000, 0); this.group.setActive(false); }
+    if (this.onReward) this.onReward();
+  }
+  reset() { this.gen++; if (this.group) this.group.setActive(false); }
+}
+
 class BridgeView {
   /* kind 'test'       -- TestBridge 0x15AC0, the 50-rival ladder
      kind 'tournament' -- TournamentBridge 0x1D280, the six Orangenose staff.
@@ -1534,7 +1731,9 @@ class BridgeView {
     await wait(1900);
   }
 
-  /* TestBridge/<PauseAnim>c__Iterator4 -- the pause overlay */
+  /* TestBridge/<PauseAnim>c__Iterator4 -- the pause overlay.  The whole
+     ladder is on screen and scrollable; ScrollingEffect below is what makes
+     the one under the middle stand up. */
   ShowPause(stage, bgHex) {
     if (!this.group) return;
     this.group.setActive(true);
@@ -1542,30 +1741,16 @@ class BridgeView {
     /* the pause screen uses the ladder, not the three-portrait card */
     if (this.moving) this.moving.setActive(false);
     this.markDefeated(stage);
-    /* only the current rival and its two neighbours are drawn; the current one
-       stands full size at y=-161, the others at 0.4 scale and y=-214 */
-    for (let i = 0; i < this.ladder.length; i++) {
-      const n = this.ladder[i];
-      const near = (i === stage || i === stage + 1 || i === stage - 1);
-      n.el.style.display = near ? '' : 'none';
-      if (!near) continue;
-      /* PauseAnim: the current rival stands full size at y=-214, the two
-         neighbours sit at 0.4 scale and y=-161 */
-      if (i === stage) { n.setLocalScale(1, 1); n.setLocalPos(n.localPos[0], -214); }
-      else { n.setLocalScale(0.4, 0.4); n.setLocalPos(n.localPos[0], -161); }
-    }
+    for (const n of this.ladder) n.el.style.display = '';
     this.MoveToCurRival(stage, true);
     if (this.retry) this.retry.setActive(false);
     if (this.bg) { const c = this.hex(bgHex); c[3] = 0.95; this.bg.setColor(c); }
     for (const n of [this.dialog, this.dialogTail, this.dialogText]) if (n) n.setEnabled(false);
     if (this.numberText) {
-      if (this.tour) this.numberText.setText((this.roster.OGTournamentEnemyBackText || [])[stage + 1] || '');
-      else { this.numberText.setText(String(this.total - stage).padStart(2, '0'));
-             this.numberText.setFontSize(300); }
+      if (!this.tour) this.numberText.setFontSize(300);
       this.numberText.setColor(this.hex('FFFFFF00'));
-      LT.alpha(this.numberText, 0.65, 0.35);          // fades to 0.65, not 1
     }
-    if (this.nameText) this.nameText.setText(this.nameFor(stage));
+    if (this.nameText) this.nameText.setColor(this.hex('16161600'));
     if (this.homeGroup) {
       this.homeGroup.setActive(true);
       this.homeGroup.setLocalScale(0, 0);
@@ -1576,17 +1761,125 @@ class BridgeView {
       this.resume.setLocalScale(0, 0);
       LT.scale(this.resume, 1, 0.3).setEase(27);
     }
-    for (const n of [this.middle, this.left, this.right, this.rightRight]) if (n) n.setAlpha(1);
-    if (this.nameText) { this.nameText.setColor(this.hex('16161600')); LT.alpha(this.nameText, 1, 0.3); }
     if (this.pauseText) {                              // PauseText.enabled = 1
       this.pauseText.setEnabled(true);
       this.pauseText.setColor(this.hex('16161600'));
       LT.alpha(this.pauseText, 1, 0.35);
     }
+    this.StartScrollingEffect();
+    this.ShowScrollFinger();
+  }
+
+  /* TestBridge/<ScrollingEffect>c__Iterator0 0x17098 -- one pass a frame.
+     Everything within 500 px of the centre grows towards full size and rises
+     to y = -214; the nearest one also owns the name and number captions. */
+  StartScrollingEffect() {
+    this.StopScrollingEffect();
+    const step = () => {
+      if (!this.content) return;
+      const cx = this.content.localPos[0];
+      const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
+      for (let i = 0; i < this.ladder.length; i++) {
+        const n = this.ladder[i];
+        const d = Math.abs(n.localPos[0] + cx);
+        if (d < 500) {
+          n.setLocalScale(lerp(1, 0.4, d / 650), lerp(1, 0.4, d / 650));
+          n.setLocalPos(n.localPos[0], lerp(-214, -161, d / 650));
+          if (this.nameText) this.nameText.setColor([0.086, 0.086, 0.086, lerp(1, 0, d / 250)]);
+          if (this.numberText) this.numberText.setColor([1, 1, 1, lerp(0.65, 0, d / 250)]);
+          if (this.tour) {
+            const R = this.roster;
+            const p = (R.OGTournamentEnemyNumberPos || [])[i + 1];
+            if (p && this.numberText) this.numberText.setLocalPos(p[0], p[1]);
+            if (this.numberText) this.numberText.setText((R.OGTournamentEnemyBackText || [])[i + 1] || '');
+            if (this.nameText) this.nameText.setText(this.nameFor(i));
+          } else {
+            const p = (this.roster.RivalModeEnemyNumberPos || [])[(this.total - i) % 10];
+            if (p && this.numberText) this.numberText.setLocalPos(p[0], p[1]);
+            if (this.numberText) this.numberText.setText(String(this.total - i).padStart(2, '0'));
+            /* rivals you have not reached yet keep their names hidden */
+            if (this.nameText) this.nameText.setText(i > DB.data.OutterStageOrder ? '???' : this.nameFor(i));
+          }
+        } else {
+          n.setLocalScale(0.4, 0.4);
+          n.setLocalPos(n.localPos[0], -161);
+        }
+      }
+    };
+    /* one pass per Clock tick; Clock is driven from rAF *and* a timer, because
+       rAF does not advance under headless Chrome's virtual clock */
+    this._scrollTick = step;
+    Clock.add(step);
+    step();
+  }
+  StopScrollingEffect() {
+    if (this._scrollTick) { Clock.remove(this._scrollTick); this._scrollTick = null; }
+  }
+
+  /* TestBridge/<ScrollFingerAnim>c__Iterator5 -- a hand hint until you scroll */
+  ShowScrollFinger() {
+    const f = this.scene.n((this.tour ? 'Canvas/TournamentBridgeGroup' : 'Canvas/BridgeGroupDavid') + '/Finger Image');
+    this.fingerNode = f;
+    if (!f) return;
+    f.setActive(true);
+    this.fingerGen = (this.fingerGen | 0) + 1;
+    const g = this.fingerGen;
+    const home = f.localPos.slice();
+    const loop = async () => {
+      while (g === this.fingerGen) {
+        if (this.cfg.FingerDownSprite) f.setSprite(this.cfg.FingerDownSprite);
+        f.setLocalPos(home[0], home[1]);
+        LT.moveLocalX(f, home[0] - 300, 0.8).setEase(16);
+        await wait(800);
+        if (g !== this.fingerGen) return;
+        if (this.cfg.FingerUpSprite) f.setSprite(this.cfg.FingerUpSprite);
+        await wait(300);
+      }
+    };
+    loop();
+  }
+  /* TestBridge::OnScrollRectValueChange 0x16Cxx -- the hint goes the moment
+     you touch the ladder */
+  HideScrollFinger() {
+    this.fingerGen = (this.fingerGen | 0) + 1;
+    if (this.fingerNode) this.fingerNode.setActive(false);
+  }
+
+  /* ---- dragging the ladder.  RivalModeBridgeScrollRect forwards the drag to
+     TestBridge::OnDragEnd 0x15F58, which snaps to whichever rival ended up
+     nearest the middle. */
+  dragStart(x) {
+    if (!this.content) return;
+    this.HideScrollFinger();
+    if (this._scrollTween) this._scrollTween.cancel();
+    this._dragX = x;
+    this._dragFrom = this.content.localPos[0];
+    this._dragging = true;
+  }
+  dragMove(x) {
+    if (!this._dragging || !this.content) return;
+    const st = $('#stage').getBoundingClientRect();
+    const k = W / st.width;                            // client px -> canvas units
+    this.content.setLocalPos(this._dragFrom + (x - this._dragX) * k, this.content.localPos[1]);
+  }
+  OnDragEnd() {
+    this._dragging = false;
+    if (!this.content || !this.ladder.length) return this.centerIndex | 0;
+    const cx = this.content.localPos[0];
+    let best = 0, bestD = Math.abs(this.ladder[0].localPos[0] + cx);
+    for (let i = 0; i < this.ladder.length; i++) {
+      const d = Math.abs(this.ladder[i].localPos[0] + cx);
+      if (d < bestD) { best = i; bestD = d; }
+    }
+    this.CurIndex = this.centerIndex = best;
+    this._scrollTween = LT.moveLocalX(this.content, -this.ladder[best].localPos[0], 0.2).setEase(27);
+    return best;
   }
 
   /* TestBridge::BridgeHide 0x16698 */
   Hide() {
+    this.StopScrollingEffect();
+    this.HideScrollFinger();
     for (const n of [this.bg, this.middle, this.left, this.right, this.rightRight,
                      this.nameText, this.numberText, this.pauseText, this.dialog,
                      this.dialogTail, this.dialogText, this.resume])

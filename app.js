@@ -156,6 +156,7 @@ class GameMgr {
     } else {
       v.EnterWithBridge(this.db.OutterStageOrder);
     }
+    if (qs.has('revive')) LT.delayedCall(1.0, () => v.revive.ShowUpReviveScene());
   }
 
   onTutorialDone() {
@@ -289,6 +290,13 @@ class GameMgr {
       if (this.tutorial.onTap(x - st.left < st.width / 2)) return;
       return;
     }
+    /* the revive offer swallows every touch while it is up */
+    if (this.view && this.view.revive && this.view.revive.shown) {
+      const h = this.view.revive.hit(x, y);
+      if (h === 'watch') { this.view.revive.press(); LT.delayedCall(0.12, () => this.view.revive.take()); }
+      else if (h === 'no') this.view.revive.fadeOut();
+      return;
+    }
     if (this.settings && this.settings.hitTest(x, y)) {
       this.settings.onSettingBtnDown(this.curSceneState); return;
     }
@@ -362,13 +370,35 @@ async function boot() {
   window.mgr = mgr;
   b.classList.add('hide');
 
+  /* the ladder on the pause screen is a Unity ScrollRect: drag it and it
+     snaps to whichever rival ends up nearest the middle (TestBridge 0x15F58) */
+  const draggable = () => {
+    const v = mgr.view;
+    const b = v && v.bridge;
+    return (b && b.group && b.group.active && b.scroll && b.scroll.active) ? b : null;
+  };
+  let dragging = null, dragMoved = false, dragX0 = 0;
   const dn = e => {
     const x = e.touches ? e.touches[0].clientX : e.clientX;
     const y = e.touches ? e.touches[0].clientY : e.clientY;
-    mgr.input(x, y);
+    const b = draggable();
+    if (b) { dragging = b; dragMoved = false; dragX0 = x; b.dragStart(x); }
+    else mgr.input(x, y);
     e.preventDefault();
   };
   addEventListener('pointerdown', dn, { passive: false });
+  addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - dragX0) > 6) dragMoved = true;
+    dragging.dragMove(e.clientX);
+  }, { passive: false });
+  addEventListener('pointerup', e => {
+    if (!dragging) return;
+    const b = dragging; dragging = null;
+    b.OnDragEnd();
+    /* a press that never moved is a tap on whatever is under it */
+    if (!dragMoved) mgr.input(e.clientX, e.clientY);
+  });
   addEventListener('keydown', e => {
     Audio_.unlock();
     if (e.repeat) return;
@@ -378,6 +408,20 @@ async function boot() {
     else if (e.key === 'p') { if (mgr.settings) mgr.settings.onSettingBtnDown(mgr.curSceneState); }
     else if (e.key === ' ') { if (v instanceof HomeSceneView) v.onLetsFight(); }
   });
+
+  /* ?drag=t:from,to -- a scripted ladder drag in canvas x, for the harness */
+  if (qs.get('drag')) {
+    const m = /^([\d.]+):(-?[\d.]+),(-?[\d.]+)$/.exec(qs.get('drag').trim());
+    if (m) setTimeout(() => {
+      const b = mgr.view && mgr.view.bridge;
+      if (!b) return;
+      const r = $('#stage').getBoundingClientRect(), k = r.width / W;
+      const a = r.left + (+m[2]) * k, z = r.left + (+m[3]) * k;
+      b.dragStart(a);
+      for (let i = 1; i <= 10; i++) b.dragMove(a + (z - a) * i / 10);
+      b.OnDragEnd();
+    }, +m[1] * 1000);
+  }
 
   /* ?tap=t:x,y;... -- scripted taps in canvas coordinates, for the harness */
   if (qs.get('tap')) {

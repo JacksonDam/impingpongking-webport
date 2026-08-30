@@ -482,6 +482,76 @@
       v.destroy();
     }
 
+    /* ------------------------------------------- the ladder and revive */
+    {
+      const host = document.createElement('div');
+      const v = new RivalModeSceneView(host, { }, 1);
+      const b = v.bridge;
+      eq('the ladder has every rival', b.ladder.length, 50);
+      /* the ladder is 650 apart, and ScrollingEffect measures against that */
+      near('rivals are 650 apart', b.ladder[1].localPos[0] - b.ladder[0].localPos[0], 650, 0.5);
+      /* OnDragEnd 0x15F58 snaps to whichever ends up nearest the middle */
+      b.MoveToCurRival(10, true);
+      eq('the ladder centres on the current rival', b.OnDragEnd(), 10);
+      b.content.setLocalPos(b.content.localPos[0] - 650, b.content.localPos[1]);
+      eq('a drag of one step moves one rival', b.OnDragEnd(), 11);
+      b.content.setLocalPos(b.content.localPos[0] + 650 * 2.4, b.content.localPos[1]);
+      eq('a drag snaps to the nearest, not the last', b.OnDragEnd(), 9);
+
+      /* Revive: one ball from losing, past the first rival, once per match */
+      v.stageOrder = 3; DB.data.OutterStageOrder = 3;
+      v.PlayerScore = 2; v.isThisMatchAlreadyRevive = false;
+      ok('the revive offer is due at match point', v.reviveIsDue);
+      v.PlayerScore = 1;
+      ok('it is not due earlier', !v.reviveIsDue);
+      v.PlayerScore = 2; v.isThisMatchAlreadyRevive = true;
+      ok('it is offered once a match', !v.reviveIsDue);
+      v.isThisMatchAlreadyRevive = false;
+      DB.data.OutterStageOrder = 0; v.stageOrder = 0;
+      ok('and never on the first rival', !v.reviveIsDue);
+      DB.data.OutterStageOrder = 5; v.stageOrder = 5;
+      eq('past rival five a match is five balls', v.matchGoal, 5);
+      v.PlayerScore = 3;
+      ok('so match point moves to three', v.reviveIsDue);
+      eq('the revive counter starts at ten', v.revive.counter, 10);
+      DB.data.OutterStageOrder = 0;
+      v.destroy();
+    }
+
+    /* a revive puts every ball the match has used back in the bag */
+    {
+      const m = new RivalModeModel();
+      m.LoadLevelProb(20);
+      const n0 = m.CurLevelGroupSequence.length;
+      m.Level_GetRoundDataAndDelete(0);
+      m.Level_GetRoundDataAndDelete(1);
+      eq('drawing a ball takes it out of the bag', m.CurLevelGroupSequence.length, n0 - 2);
+      eq('and files it away', m.UsedGroupSequence.length, 2);
+      m.RemakeLevelGroupSequence();
+      eq('a revive puts them back', m.CurLevelGroupSequence.length, n0);
+      eq('and empties the used list', m.UsedGroupSequence.length, 0);
+    }
+
+    /* the share panel's real gate, 0x0B38 */
+    {
+      const db = DB.data, keep = JSON.stringify(db);
+      const g = () => mgr.shareIsDue();
+      Object.assign(db, { OutterStageOrder: 3, OGTournamentStageOrder: 0,
+                          RivalMode_LastShareShowsUp: 0, OutterStageRetryCount: {} });
+      ok('three stages without one makes it due', g());
+      db.RivalMode_LastShareShowsUp = 2;
+      ok('one stage does not', !g());
+      db.OutterStageRetryCount = { 3: 5 };
+      ok('five retries do', g());
+      db.OutterStageOrder = 5; db.RivalMode_LastShareShowsUp = 0; db.OutterStageRetryCount = {};
+      ok('stage 5 is reserved', !g());
+      db.OutterStageOrder = 9;
+      ok('so is stage 9', !g());
+      db.OutterStageOrder = 14;
+      ok('and stage 14', !g());
+      Object.assign(db, JSON.parse(keep));
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');
