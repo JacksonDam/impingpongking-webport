@@ -315,6 +315,22 @@
       near('releasing puts it back at -742', V.hitL.localPos[1], -742, 0.01);
       near('releasing puts it back at x=-17.5', V.hitL.localPos[0], -17.5, 0.01);
 
+      /* the score pad folds shut and unfolds -- <PlayerScorePadFlip>c__Iterator4 */
+      const longG = V.scene.n('Canvas/Top Group/PlayerScorePad Group/PlayerScoreLong Group');
+      V.PlayerScore = 2;
+      let minY = 9, maxY = -9;
+      const watch = setInterval(() => {
+        const y = longG.localScale[1];
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }, 10);
+      await V.ScorePadFlip('player');
+      clearInterval(watch);
+      ok('the score pad folds shut', minY < 0.25, minY.toFixed(3));
+      ok('the score pad unfolds again', Math.abs(longG.localScale[1] - 1) < 0.01, longG.localScale[1]);
+      eq('the pad shows the new score', V.playerScoreText.txt.textContent, '2');
+      V.PlayerScore = 0; V.updateScore();
+
       /* the ladder TestBridge::Init builds */
       eq('the rival ladder has one entry per rival', V.bridge.ladder.length, 50);
       eq('ladder entries are 650 apart',
