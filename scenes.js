@@ -150,8 +150,12 @@ class HomeSceneView {
     /* OnViewEnable 0x41A88 lays the bottom row out three ways, and each button
        it turns on gets raycastTarget and a 1.02x breathing pulse. */
     const db = DB.data;
-    this.showEndless = !!db.isEndlessModeShow;
-    this.showTour = !!db.IsRivalModeComplete;
+    /* IsFirstTimeBackHomeFromRivalEnding holds both new buttons back for the
+       one visit straight out of the ending (0x41A88 IL_010D / IL_01D7) */
+    const first = !!mgr.IsFirstTimeBackHomeFromRivalEnding;
+    mgr.IsFirstTimeBackHomeFromRivalEnding = false;
+    this.showEndless = !!db.isEndlessModeShow && !first;
+    this.showTour = !!db.IsRivalModeComplete && !first;
     if (this.showTour && !this.showEndless) {
       if (this.endlessShadow) this.endlessShadow.setActive(false);
       if (this.playShadow) this.playShadow.setLocalPos(-140, -753);

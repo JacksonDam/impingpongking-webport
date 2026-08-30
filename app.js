@@ -76,6 +76,7 @@ class GameMgr {
     if (go === 'rival') { this.db.isTutorialPass = true; return this.goRival(); }
     if (go === 'tutorial') { this.db.isTutorialPass = false; return this.goRival(); }
     if (go === 'ending') return this.goEnding();
+    if (go === 'tournamentend') { this.curGameMode = 2; return this.goEnding(); }
     if (go === 'gif') return this.goGif(parseInt(qs.get('gif') || '0', 10));
     if (go === 'endless') return this.goEndlessList();
     if (go === 'tournament') { this.db.isTournamentModeEnter = true; DB.save(); this.curGameMode = 2; return this.goRival(); }
@@ -263,9 +264,9 @@ class GameMgr {
   goEnding() {
     this.clearView();
     if (this.settings) this.settings.SettingBtnHide(0.1);
-    const e = new EndingView(this.stage, this);
+    const e = new EndingView(this.stage, this, this.curGameMode || 1);
     this.view = e;
-    e.run();
+    if (this.curGameMode === 2) e.runTournament(); else e.run();
   }
 
   input(x, y) {
@@ -285,7 +286,19 @@ class GameMgr {
       return;
     }
     if (this.view instanceof EndingView) {
-      if (this.view.homeTap(x, y)) { this.db.OutterStageOrder = 0; DB.save(); this.goHome(); }
+      if (this.view.homeTap(x, y)) {
+        /* RivalModeEnding::OnHomeBtnClick 0x2C01C -- back to the home screen;
+           coming out of the career ending for the first time also sets
+           IsFirstTimeBackHomeFromRivalEnding, which holds the tournament and
+           endless buttons back for that one visit. */
+        if (this.curGameMode === 2) this.db.OGTournamentStageOrder = 0;
+        else {
+          this.db.OutterStageOrder = 0;
+          if (!this.db.isTournamentModeEnter) this.IsFirstTimeBackHomeFromRivalEnding = true;
+        }
+        DB.save();
+        this.goHome();
+      }
       return;
     }
     if (this.tutorial) {

@@ -691,6 +691,28 @@
       t.destroy(); rival.destroy();
     }
 
+    /* -------------------------------------------- the two endings */
+    {
+      const host = document.createElement('div');
+      const a = new EndingView(host, mgr, 1);
+      ok('the career ending uses its own group',
+         !a.scene.n('TournamentModeEnd Group').active);
+      eq('and says Now / Ping / Pong / King',
+         [a.nowText, a.pingText, a.pongText, a.kingText].map(n => n.txt.textContent).join(' '),
+         'Now Ping Pong King');
+      a.destroy();
+      const b = new EndingView(host, mgr, 2);
+      ok('the tournament ending hides the career one',
+         !b.scene.n('RivalModeEnd Group').active);
+      eq("and opens with the studio's reply",
+         b.tWord11.txt.textContent + b.tWord12.txt.textContent + b.tWord13.txt.textContent,
+         "Wow, I can't believe you\n\u200bhave beaten our team so easily.");
+      eq('then asks you not to tell anyone', b.tWord2.txt.textContent,
+         "Please DON'T tell your \nfriends about this game!");
+      ok('it has a heart and a credits roll', !!b.tHeart && !!b.credits);
+      b.destroy();
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

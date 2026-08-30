@@ -44,7 +44,10 @@ The whole first-run experience, in order:
    and the champion's three dances;
 7. the **Orangenose Tournament** — its introduction panel, then six bouts
    against the studio (Jeff the programmer, Chelsea the artist, Rose,
-   Tracy, Leon, and All staff) on their own palette and their own bridge;
+   Tracy, Leon, and All staff) on their own palette and their own bridge, and
+   its own ending: "Wow, I can't believe you have beaten our team so easily.
+   Please DON'T tell your friends about this game!", the heart, twenty seconds
+   of credits and the whole studio holding up a LOVE placard;
 8. the **PPK Impossible Test** — three endless modes with their own intro
    alerts, score classes and result pages:
    **Eyesight**, where every point you win shrinks the whole play area by 15%;
@@ -152,14 +155,14 @@ rival.js     Core (the ball engine), RivalModeModel, the crowd, the bridge
 extra.js     the tutorial, the ending, Today's GIF, the tournament panel
 modes.js     the three Impossible Test modes and their card list
 app.js       boot and the scene manager
-selftest.js  238 in-page assertions
+selftest.js  244 in-page assertions
 ```
 
 ## Dev harness
 
 ```
 ?goto=home|rival|tutorial|ending|gif|endless|tournament|
-      tournamentinfo|eyesight|concentrate|invert    jump to a screen
+      tournamentinfo|tournamentend|eyesight|concentrate|invert
 ?nogate=1       skip the tap-to-start gate
 ?nobridge=1     skip the challenger card and go straight to the rally
 ?stage=N        start on career stage N (0-49)
@@ -180,7 +183,7 @@ selftest.js  238 in-page assertions
 ```sh
 ./shot.sh <name> ["<query>"] [ms]    # screenshot -> shots/
 ./shot2.sh <name> "<query>" <ms>     # the same, without the freeze
-./selftest.sh                        # 238 assertions, headless
+./selftest.sh                        # 244 assertions, headless
 ./errs.sh "<query>" <ms>             # dump every uncaught error the page hit
 ```
 

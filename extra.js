@@ -205,6 +205,61 @@ class TutorialView {
     return true;
   }
 
+  /* <EndingAnim_TournamentMode>c__Iterator3 0x2CFD8 -- the studio's reply, the
+     heart, twenty seconds of credits, and "Ping Pong King" with a Like button.
+     The BGM is TrueEndingBGM, not the career ending's. */
+  async runTournament() {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    const W_ = async t => { await wait(t * 1000); return alive(); };
+    LT.value(0.15, 0, 0.2, v => Audio_.setBgmVolume(v));
+    if (!await W_(0.2)) return;
+    if (this.bg) LT.alpha(this.bg, 1, 0.5);
+    if (!await W_(2)) return;
+    Audio_.setBgmVolume(0);
+    Audio_.playBgm('TrueEndingBGM', true);
+    LT.value(0, 1, 2, v => Audio_.setBgmVolume(v));
+    if (this.tWord11) LT.scale(this.tWord11, 1, 0.5).setEase(30);
+    if (!await W_(1.3)) return;
+    for (const n of [this.tWord12, this.tWord13]) if (n) LT.alpha(n, 1, 0.5);
+    if (!await W_(3.8)) return;
+    for (const n of [this.tWord11, this.tWord12, this.tWord13]) if (n) LT.alpha(n, 0, 0.3);
+    if (!await W_(0.8)) return;
+    if (this.tWord2) LT.alpha(this.tWord2, 1, 0.35);
+    if (!await W_(3.8)) return;
+    if (this.tWord2) LT.alpha(this.tWord2, 0, 0.3);
+    if (!await W_(0.8)) return;
+    if (this.tWord3) LT.alpha(this.tWord3, 1, 0.35);
+    if (!await W_(0.8)) return;
+    if (this.tHeart) LT.scale(this.tHeart, 1, 0.6).setEase(30);
+    if (!await W_(3.5)) return;
+    if (this.credits) LT.moveLocalY(this.credits, 3611, 20);
+    if (this.tHeart) LT.alpha(this.tHeart, 0, 0.3);
+    if (this.tWord3) LT.alpha(this.tWord3, 0, 0.3);
+    if (!await W_(21)) return;
+    if (this.tPPK) {
+      LT.alpha(this.tPPK, 1, 0.5);
+      LT.moveLocalY(this.tPPK, -478.37, 0.5).setEase(15);
+      LT.scale(this.tPPK, 1.013, 1).setLoopPingPong(-1);
+    }
+    if (this.tLike) {
+      LT.alpha(this.tLike, 1, 0.5);
+      LT.scale(this.tLike, 1.08, 0.8).setEase(15).setLoopPingPong(-1);
+    }
+    if (!await W_(0.5)) return;
+    /* the two buttons swap sizes for this ending: a small home, a big share */
+    if (this.homeShadow) { this.homeShadow.setLocalScale(0.6, 0.6); this.homeShadow.setLocalPos(-174.4, -755.7); }
+    if (this.homeBtn && this.cfg.SmallHomeBtnSprite) this.homeBtn.setSprite(this.cfg.SmallHomeBtnSprite);
+    if (this.uploadShadow) { this.uploadShadow.setLocalScale(1, 1); this.uploadShadow.setLocalPos(151.376, -682.5); }
+    if (this.uploadBtn && this.cfg.BigUploadSprite) this.uploadBtn.setSprite(this.cfg.BigUploadSprite);
+    for (const n of [this.homeBtn, this.homeShadow, this.uploadBtn, this.uploadShadow])
+      if (n) LT.alpha(n, 1, 0.5);
+    if (this.uploadShadow) LT.scale(this.uploadShadow, 1.05, 1).setLoopPingPong(-1);
+    if (!await W_(0.35)) return;
+    this.homeActive = true;
+    if (!await W_(0.65)) return;
+  }
+
   /* one serve, held at the hit window until the player taps.  The frame
      stepping and the HitOnTableNotification cue are TutorialStart's. */
   async taughtRally(side, alive) {
@@ -492,8 +547,11 @@ class TutorialView {
  * EndingAnim (iterator 0) -- "Now / You Are / Ping Pong King", the crown, the
  * rotating shine and the dancing champion. */
 class EndingView {
-  constructor(host, mgr) {
+  /* mode 1 = the career ending ("Now You Are Ping Pong King"), mode 2 = the
+     tournament's, which is a different group in the same prefab */
+  constructor(host, mgr, mode) {
     this.mgr = mgr;
+    this.mode = mode || 1;
     this.scene = new Scene('prefab:EndGame Group', host, { fullSize: 'EndGame Group' });
     const s = this.scene;
     this.scene.root.style.display = '';
@@ -515,7 +573,27 @@ class EndingView {
                      this.cfg.Dance3Sequence || []];
     this.homeShadow = N(this.cfg.HomeBtnShadowImage);
     this.homeBtn = N(this.cfg.HomeBtnImage);
-    s.hide('TournamentModeEnd Group');
+    this.uploadShadow = N(this.cfg.UploadBtnShadowImage);
+    this.uploadBtn = N(this.cfg.UploadBtnImage);
+    /* the tournament half */
+    this.tWordGroup = N(this.cfg.Tournament_WordGroup);
+    this.tWord11 = N(this.cfg.Tournament_EndingWord1_1Text);
+    this.tWord12 = N(this.cfg.Tournament_EndingWord1_2Text);
+    this.tWord13 = N(this.cfg.Tournament_EndingWord1_3Text);
+    this.tWord2 = N(this.cfg.Tournament_EndingWord2Text);
+    this.tWord3 = N(this.cfg.Tournament_EndingWord3Text);
+    this.tHeart = N(this.cfg.Tournament_HeartImage);
+    this.tPPK = N(this.cfg.Tournament_PingPongKingImage);
+    this.tLike = N(this.cfg.Tournament_LikeUsBtnImage);
+    this.credits = N(this.cfg.CreditGroup);
+    if (this.mode === 2) {
+      s.hide('RivalModeEnd Group');
+      for (const n of [this.tWord11, this.tHeart]) if (n) n.setLocalScale(0, 0);
+      for (const n of [this.tWord12, this.tWord13, this.tWord2, this.tWord3,
+                       this.tPPK, this.tLike]) if (n) n.setAlpha(0);
+    } else {
+      s.hide('TournamentModeEnd Group');
+    }
     for (const n of [this.crown, this.nowText, this.pingText, this.pongText, this.kingText])
       if (n) n.setLocalScale(0, 0);
     for (const n of this.shineImgs) n.setAlpha(0);
@@ -533,6 +611,61 @@ class EndingView {
     this.homeActive = false;
     Audio_.play('mouse_click');
     return true;
+  }
+
+  /* <EndingAnim_TournamentMode>c__Iterator3 0x2CFD8 -- the studio's reply, the
+     heart, twenty seconds of credits, and "Ping Pong King" with a Like button.
+     The BGM is TrueEndingBGM, not the career ending's. */
+  async runTournament() {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    const W_ = async t => { await wait(t * 1000); return alive(); };
+    LT.value(0.15, 0, 0.2, v => Audio_.setBgmVolume(v));
+    if (!await W_(0.2)) return;
+    if (this.bg) LT.alpha(this.bg, 1, 0.5);
+    if (!await W_(2)) return;
+    Audio_.setBgmVolume(0);
+    Audio_.playBgm('TrueEndingBGM', true);
+    LT.value(0, 1, 2, v => Audio_.setBgmVolume(v));
+    if (this.tWord11) LT.scale(this.tWord11, 1, 0.5).setEase(30);
+    if (!await W_(1.3)) return;
+    for (const n of [this.tWord12, this.tWord13]) if (n) LT.alpha(n, 1, 0.5);
+    if (!await W_(3.8)) return;
+    for (const n of [this.tWord11, this.tWord12, this.tWord13]) if (n) LT.alpha(n, 0, 0.3);
+    if (!await W_(0.8)) return;
+    if (this.tWord2) LT.alpha(this.tWord2, 1, 0.35);
+    if (!await W_(3.8)) return;
+    if (this.tWord2) LT.alpha(this.tWord2, 0, 0.3);
+    if (!await W_(0.8)) return;
+    if (this.tWord3) LT.alpha(this.tWord3, 1, 0.35);
+    if (!await W_(0.8)) return;
+    if (this.tHeart) LT.scale(this.tHeart, 1, 0.6).setEase(30);
+    if (!await W_(3.5)) return;
+    if (this.credits) LT.moveLocalY(this.credits, 3611, 20);
+    if (this.tHeart) LT.alpha(this.tHeart, 0, 0.3);
+    if (this.tWord3) LT.alpha(this.tWord3, 0, 0.3);
+    if (!await W_(21)) return;
+    if (this.tPPK) {
+      LT.alpha(this.tPPK, 1, 0.5);
+      LT.moveLocalY(this.tPPK, -478.37, 0.5).setEase(15);
+      LT.scale(this.tPPK, 1.013, 1).setLoopPingPong(-1);
+    }
+    if (this.tLike) {
+      LT.alpha(this.tLike, 1, 0.5);
+      LT.scale(this.tLike, 1.08, 0.8).setEase(15).setLoopPingPong(-1);
+    }
+    if (!await W_(0.5)) return;
+    /* the two buttons swap sizes for this ending: a small home, a big share */
+    if (this.homeShadow) { this.homeShadow.setLocalScale(0.6, 0.6); this.homeShadow.setLocalPos(-174.4, -755.7); }
+    if (this.homeBtn && this.cfg.SmallHomeBtnSprite) this.homeBtn.setSprite(this.cfg.SmallHomeBtnSprite);
+    if (this.uploadShadow) { this.uploadShadow.setLocalScale(1, 1); this.uploadShadow.setLocalPos(151.376, -682.5); }
+    if (this.uploadBtn && this.cfg.BigUploadSprite) this.uploadBtn.setSprite(this.cfg.BigUploadSprite);
+    for (const n of [this.homeBtn, this.homeShadow, this.uploadBtn, this.uploadShadow])
+      if (n) LT.alpha(n, 1, 0.5);
+    if (this.uploadShadow) LT.scale(this.uploadShadow, 1.05, 1).setLoopPingPong(-1);
+    if (!await W_(0.35)) return;
+    this.homeActive = true;
+    if (!await W_(0.65)) return;
   }
 
   /* one serve, held at the hit window until the player taps.  The frame
