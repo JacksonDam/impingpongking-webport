@@ -674,12 +674,18 @@ class Audiance {
  * RivalModeScene (token 0x02000082).  Reset_EnterGame 0x34178 sets the stage
  * up, StartRun kicks the rally off, and WinAnim / LoseAnim close each ball. */
 class RivalModeSceneView {
-  constructor(host, mgr) {
+  /* gameMode 1 = the 50-rival career, 2 = the Orangenose Tournament.  The APK
+     runs both through this one scene; GameMgr.curGameMode picks the bridge,
+     the roster and the background palette. */
+  constructor(host, mgr, gameMode) {
     this.mgr = mgr;
+    this.gameMode = gameMode || 1;
+    this.tour = this.gameMode === 2;
     this.scene = new Scene('RivalModeScene', host);
     const s = this.scene;
     this.cfg = s.comp('', 'RivalModeScene') || {};
-    this.bridgeCfg = s.comp('Canvas/BridgeGroupDavid', 'TestBridge') || {};
+    this.bridgeCfg = s.comp(this.tour ? 'Canvas/TournamentBridgeGroup' : 'Canvas/BridgeGroupDavid',
+                            this.tour ? 'TournamentBridge' : 'TestBridge') || {};
     this.roster = (G.data.arrays && G.data.arrays.TestEnemyDetail) || {};
     this.core = new Core(s, 'RivalModeScene');
     this.model = new RivalModeModel();
@@ -708,7 +714,7 @@ class RivalModeSceneView {
                   .map(k => N(C[k])).filter(Boolean);
     this.BgColors = C.BgColors || ['FFCB39'];
 
-    this.bridge = new BridgeView(s, mgr);
+    this.bridge = new BridgeView(s, mgr, this.tour ? 'tournament' : 'test');
     this.hideChrome();
     this.wire();
   }
@@ -775,7 +781,7 @@ class RivalModeSceneView {
      HitBtnSprites[OutterStageOrder % 5], so they match the stage's background
      colour -- five buttons for the five backgrounds. */
   ShowHitBtn(alpha) {
-    const spr = (this.cfg.HitBtnSprites || [])[this.stageOrder % 5];
+    const spr = (this.cfg.HitBtnSprites || [])[this.bgIndex(this.stageOrder)];
     if (spr) { if (this.hitL) this.hitL.setSprite(spr); if (this.hitR) this.hitR.setSprite(spr); }
     for (const n of [this.hitL, this.hitR, this.hitLText, this.hitRText]) if (n) n.setEnabled(true);
     for (const n of [this.hitL, this.hitR]) if (n) LT.alpha(n, alpha, 0.5).setEase(14);
@@ -810,14 +816,20 @@ class RivalModeSceneView {
   }
 
   /* three balls win a match for the first five rivals, five after that --
-     the rule alerts Reset_EnterGame raises say exactly that */
-  get matchGoal() { return this.stageOrder > 4 ? 5 : 3; }
+     the rule alerts Reset_EnterGame raises say exactly that.  The tournament
+     keeps reading OutterStageOrder for this, so its six bouts inherit whatever
+     the career reached (0x0631). */
+  get matchGoal() { return (this.tour ? DB.data.OutterStageOrder : this.stageOrder) > 4 ? 5 : 3; }
+
+  /* the tournament's palette starts ten steps along: BgColors[(10 + n) % 5] */
+  bgIndex(stage) { return this.tour ? (10 + stage) % 5 : stage % 5; }
+  bgHex(stage) { return this.BgColors[this.bgIndex(stage)]; }
 
   /* the challenger card: TestBridge::BridgeShowWhenEnterGame, then the match */
   async EnterWithBridge(stageOrder) {
     this.stageOrder = stageOrder;
     this.TouchBlockEnable(true);
-    await this.bridge.ShowWhenEnterGame(stageOrder, this.BgColors[stageOrder % 5]);
+    await this.bridge.ShowWhenEnterGame(stageOrder, this.bgHex(stageOrder));
     this.bridge.Hide();
     await wait(300);
     this.Reset_EnterGame(stageOrder);
@@ -825,7 +837,7 @@ class RivalModeSceneView {
 
   /* the beaten rival's line, then on to the next challenger */
   async ShowBeatenThenNext(stageOrder) {
-    await this.bridge.ShowWhenEnterGame(stageOrder, this.BgColors[stageOrder % 5]);
+    await this.bridge.ShowWhenEnterGame(stageOrder, this.bgHex(stageOrder));
     await this.bridge.ShowBeaten(stageOrder);
     this.bridge.Hide();
     await wait(400);
@@ -835,7 +847,7 @@ class RivalModeSceneView {
   Reset_EnterGame(stageOrder) {
     this.stageOrder = stageOrder;
     this.TouchBlockEnable(true);
-    const col = this.hex(this.BgColors[stageOrder % 5]);
+    const col = this.hex(this.bgHex(stageOrder));
     if (this.bg) this.bg.setColor(col);
     for (const n of this.padBgs) n.setColor(col);
 
@@ -848,15 +860,28 @@ class RivalModeSceneView {
     if (c.nameLine1) c.nameLine1.setColor(this.hex('16161600'));
     if (c.nameLine2) c.nameLine2.setColor(this.hex('16161600'));
 
-    /* the rival: portrait, rank and name, counted down from the roster's end */
-    const total = this.bridgeCfg.totalEnemyNum || 50;
-    const idx = total - stageOrder;
-    const sprites = (this.bridgeCfg.TestBridgeSprites || []).filter(Boolean);
-    const names = this.roster.RivalModeEnemyName || [];
-    if (c.manBFirstLook && sprites.length) c.manBFirstLook.setSprite(sprites[idx % sprites.length]);
-    if (c.nameLine1) c.nameLine1.setText('#' + idx);
-    if (c.nameLine2) c.nameLine2.setText(names[idx] || '');
-    if (c.manBFirstLook) { c.manBFirstLook.setSize(319, 428); c.manBFirstLook.setEnabled(true); }
+    /* the rival: portrait, rank and name.  The career counts down from the
+       roster's end; the tournament indexes its own seven-slot tables from 1. */
+    if (this.tour) {
+      const R = this.roster;
+      const spr = (this.bridgeCfg.TournamentBridgeSprites || [])[stageOrder + 1];
+      if (c.manBFirstLook && spr) c.manBFirstLook.setSprite(spr);
+      if (c.nameLine1) c.nameLine1.setText((R.OGTournamentEnemyBackText || [])[stageOrder + 1] || '');
+      if (c.nameLine2) c.nameLine2.setText((R.OGTournamentEnemyName || [])[stageOrder + 1] || '');
+      /* "All staff" is a wider picture -- 0x0553 */
+      if (c.manBFirstLook) c.manBFirstLook.setSize(stageOrder === 5 ? 450.36 : 319,
+                                                   stageOrder === 5 ? 411.579 : 428);
+    } else {
+      const total = this.bridgeCfg.totalEnemyNum || 50;
+      const idx = total - stageOrder;
+      const sprites = (this.bridgeCfg.TestBridgeSprites || []).filter(Boolean);
+      const names = this.roster.RivalModeEnemyName || [];
+      if (c.manBFirstLook && sprites.length) c.manBFirstLook.setSprite(sprites[idx % sprites.length]);
+      if (c.nameLine1) c.nameLine1.setText('#' + idx);
+      if (c.nameLine2) c.nameLine2.setText(names[idx] || '');
+      if (c.manBFirstLook) c.manBFirstLook.setSize(319, 428);
+    }
+    if (c.manBFirstLook) c.manBFirstLook.setEnabled(true);
     if (c.manB) c.manB.setEnabled(false);
     if (c.manA) c.manA.setEnabled(true);
     if (c.nameLine1) c.nameLine1.setEnabled(true);
@@ -870,7 +895,11 @@ class RivalModeSceneView {
     if (this.winLoseText) this.winLoseText.setEnabled(false);
     if (this.missText) this.missText.setAlpha(0);
 
-    this.model.LoadLevelProb(stageOrder * 5 + this.PlayerScore + 1);
+    /* [sic] 0x34178 reads OutterStageOrder here even in tournament mode, so a
+       tournament match opens on the career's difficulty and only switches to
+       50 + OGTournamentStageOrder*5 + PlayerScore after the first point. */
+    this.model.Init();
+    this.model.LoadLevelProb(DB.data.OutterStageOrder * 5 + this.PlayerScore + 1);
     this.bindCore();
     this.audiance.Hide();
 
@@ -1193,7 +1222,7 @@ class RivalModeSceneView {
     c.manB.setLocalPos(543.93, 489.1);
     this.placeManA('A1');
     /* the colours come back after a lost ball */
-    const col = this.hex(this.BgColors[this.stageOrder % 5]);
+    const col = this.hex(this.bgHex(this.stageOrder));
     if (this.bg) this.bg.setColor(col);
     for (const n of this.padBgs) n.setColor(col);
     const dark = this.hex('161616FF');
@@ -1202,7 +1231,9 @@ class RivalModeSceneView {
     if (this.winLoseText) this.winLoseText.setColor(dark);
     if (this.playerPad) this.playerPad.setLocalScale(1, 1);
     this.RoundCount = 0;
-    this.model.LoadLevelProb(this.stageOrder * 5 + this.PlayerScore + 1);
+    this.model.LoadLevelProb(this.tour
+      ? 50 + this.stageOrder * 5 + this.PlayerScore
+      : this.stageOrder * 5 + this.PlayerScore + 1);
     this.updateScore(); this.updateRemain();
     c.reset();
     this.bindCore();
@@ -1252,7 +1283,7 @@ class RivalModeSceneView {
     this.isGamePause = v;
     this.core.Pause(v);
     this.audiance.Pause(v);
-    if (v) this.bridge.ShowPause(this.stageOrder, this.BgColors[this.stageOrder % 5]);
+    if (v) this.bridge.ShowPause(this.stageOrder, this.bgHex(this.stageOrder));
     else this.bridge.Hide();
     for (const n of [this.hitL, this.hitR, this.hitLShadow, this.hitRShadow,
                      this.hitLText, this.hitRText, this.playerPad, this.enemyPad,
@@ -1275,12 +1306,20 @@ class RivalModeSceneView {
  * where the rival says his line.  RivalModeScene::Pause 0x35048 activates it,
  * so this is also what a paused rally looks like. */
 class BridgeView {
-  constructor(scene, mgr) {
+  /* kind 'test'       -- TestBridge 0x15AC0, the 50-rival ladder
+     kind 'tournament' -- TournamentBridge 0x1D280, the six Orangenose staff.
+     The two components are line-for-line the same shape; what differs is the
+     length, how a stage indexes the sprite and name tables, and that the
+     tournament prints a job title where the ladder prints a number. */
+  constructor(scene, mgr, kind) {
     this.scene = scene; this.mgr = mgr;
-    this.cfg = scene.comp('Canvas/BridgeGroupDavid', 'TestBridge') || {};
+    this.kind = kind || 'test';
+    this.tour = this.kind === 'tournament';
+    const path = this.tour ? 'Canvas/TournamentBridgeGroup' : 'Canvas/BridgeGroupDavid';
+    this.cfg = scene.comp(path, this.tour ? 'TournamentBridge' : 'TestBridge') || {};
     this.roster = (G.data.arrays && G.data.arrays.TestEnemyDetail) || {};
     const N = r => (r && r.node) ? scene.n(r.node) : null;
-    this.group = scene.n('Canvas/BridgeGroupDavid');
+    this.group = scene.n(path);
     this.moving = N(this.cfg.BridgeMovingGroup);
     this.left = N(this.cfg.LeftEnemyImage);
     this.middle = N(this.cfg.MiddleEnemyImage);
@@ -1298,10 +1337,11 @@ class BridgeView {
     this.homeGroup = N(this.cfg.HomeBtnGroup);
     this.scroll = N(this.cfg.TestBridgeScrollRectGroup);
     this.total = this.cfg.totalEnemyNum || 50;
-    this.sprites = this.cfg.TestBridgeSprites || [];
+    this.sprites = (this.tour ? this.cfg.TournamentBridgeSprites : this.cfg.TestBridgeSprites) || [];
     this.unknown = this.cfg.BridgeUnknowSprites || [];
-    this.content = scene.n('Canvas/BridgeGroupDavid/BridgeScrollRect/Viewport/ScrollContent');
-    this.entry0 = scene.n('Canvas/BridgeGroupDavid/BridgeScrollRect/Viewport/ScrollContent/Enemy1 Image');
+    this.allStaffLose = this.cfg.BridgeAllStaffsLoseSprite;
+    this.content = scene.n(path + '/BridgeScrollRect/Viewport/ScrollContent');
+    this.entry0 = scene.n(path + '/BridgeScrollRect/Viewport/ScrollContent/Enemy1 Image');
     this.ladder = [];
     this.Init();
     if (this.group) this.group.setActive(false);
@@ -1367,34 +1407,68 @@ class BridgeView {
   hex(h) { const v = p => parseInt(h.substr(p, 2), 16) / 255;
            return [v(0), v(2), v(4), h.length >= 8 ? v(6) : 1]; }
 
-  /* TestBridge::SetUpBridge 0x16120 */
+  /* the ladder counts DOWN from #50 and wraps its ten portraits; the
+     tournament indexes its seven-slot tables from 1 with no wrap at all. */
+  spriteFor(stage) {
+    return this.tour ? this.sprites[stage + 1]
+                     : this.sprites[(((this.total - stage) % 10) + 10) % 10];
+  }
+  unknownFor(stage) {
+    return this.tour ? this.unknown[stage + 1]
+                     : this.unknown[(((this.total - stage) % 10) + 10) % 10];
+  }
+  nameFor(stage) {
+    return this.tour ? (this.roster.OGTournamentEnemyName || [])[stage + 1] || ''
+                     : (this.roster.RivalModeEnemyName || [])[this.total - stage] || '';
+  }
+  wordsFor(stage) {
+    const w = this.tour ? this.roster.OGTournamentEnemyWordsWhenLose
+                        : this.roster.RivalModeEnemyWordsWhenLose;
+    if (!w) return '';
+    return this.tour ? (w[stage + 1] || '')
+                     : (w[(((this.total - stage) % 10) + 10) % 10] || '');
+  }
+
+  /* TestBridge::SetUpBridge 0x16120 / TournamentBridge::SetUpBridge */
   SetUpBridge(stage) {
-    const S = this.sprites, U = this.unknown, T = this.total;
-    const pick = (arr, i) => arr[((i % 10) + 10) % 10];
+    const T = this.total;
     if (this.left) {
       if (stage === 0) this.left.setEnabled(false);
-      else { this.left.setEnabled(true); this.left.setSprite(pick(S, T - (stage - 1)));
+      else { this.left.setEnabled(true); this.left.setSprite(this.spriteFor(stage - 1));
              this.left.setNativeSize(); this.left.setLocalScale(0.4, 0.4); }
     }
     if (this.right) {
       if (stage === T - 1) this.right.setEnabled(false);
-      else { this.right.setEnabled(true); this.right.setSprite(pick(S, T - (stage + 1)));
+      else { this.right.setEnabled(true); this.right.setSprite(this.spriteFor(stage + 1));
              this.right.setNativeSize(); this.right.setLocalScale(0.4, 0.4); }
     }
     if (this.rightRight) {
-      if (stage >= T - 2) this.rightRight.setEnabled(false);
-      else { this.rightRight.setEnabled(true); this.rightRight.setSprite(pick(U, T - (stage + 2)));
+      /* [sic] the tournament's guard is `OGTournamentStageOrder > 3`, so with
+         six staff the unknown silhouette vanishes one slot early */
+      const off = this.tour ? (stage > 3) : (stage >= T - 2);
+      if (off) this.rightRight.setEnabled(false);
+      else { this.rightRight.setEnabled(true); this.rightRight.setSprite(this.unknownFor(stage + 2));
              this.rightRight.setNativeSize(); this.rightRight.setLocalScale(0.4, 0.4); }
     }
     if (this.middle) {
       this.middle.setEnabled(true);
-      this.middle.setSprite(pick(S, T - stage));
+      this.middle.setSprite(this.spriteFor(stage));
       this.middle.setNativeSize();
       this.middle.setLocalScale(1, 1);
     }
-    const n = T - stage;
-    if (this.numberText) this.numberText.setText(String(n).padStart(2, '0'));
-    if (this.nameText) this.nameText.setText((this.roster.RivalModeEnemyName || [])[n] || '');
+    if (this.numberText) {
+      if (this.tour) {
+        const R = this.roster;
+        this.numberText.setText((R.OGTournamentEnemyBackText || [])[stage + 1] || '');
+        const fs = (R.OGTournamentTextFontSize || [])[stage + 1];
+        if (fs) this.numberText.setFontSize(fs);
+        const p = (R.OGTournamentEnemyNumberPos || [])[stage + 1];
+        if (p) this.numberText.setLocalPos(p[0], p[1]);
+      } else {
+        this.numberText.setText(String(T - stage).padStart(2, '0'));
+      }
+    }
+    if (this.nameText) this.nameText.setText(this.nameFor(stage));
   }
 
   hideAll() {
@@ -1441,14 +1515,18 @@ class BridgeView {
      his head and says his line. */
   async ShowBeaten(stage) {
     if (!this.middle) return;
-    this.middle.setSprite(this.cfg.BridgeEnemyLoseSprite);
+    /* the whole studio shares one "all staff lose" pose for the last bout */
+    this.middle.setSprite(this.tour && stage === this.total - 1 && this.allStaffLose
+                          ? this.allStaffLose : this.cfg.BridgeEnemyLoseSprite);
     this.middle.setNativeSize();
     const y = this.middle.localPos[1];
     LT.moveLocalY(this.middle, y - 30, 0.07).setLoopPingPong(1);
-    const words = this.roster.RivalModeEnemyWordsWhenLose || [];
-    const n = this.total - stage;
-    if (this.dialogText) this.dialogText.setText(words[((n % 10) + 10) % 10] || '');
-    if (this.dialogTail) this.dialogTail.setLocalPos(96, -19 + 603);
+    if (this.dialogText) this.dialogText.setText(this.wordsFor(stage));
+    const dp = this.tour && (this.roster.OGTournamentEnemyDialogPos || [])[stage + 1];
+    if (this.dialogTail) {
+      if (dp) this.dialogTail.setLocalPos(dp[0], dp[1]);
+      else this.dialogTail.setLocalPos(96, -19 + 603);
+    }
     await wait(300);                                   // <>m__0
     if (this.dialog) { this.dialog.setColor([1, 1, 1, 0]); LT.alpha(this.dialog, 1, 0.1); }
     if (this.dialogTail) { this.dialogTail.setColor([1, 1, 1, 0]); LT.alpha(this.dialogTail, 1, 0.1); }
@@ -1480,14 +1558,14 @@ class BridgeView {
     if (this.retry) this.retry.setActive(false);
     if (this.bg) { const c = this.hex(bgHex); c[3] = 0.95; this.bg.setColor(c); }
     for (const n of [this.dialog, this.dialogTail, this.dialogText]) if (n) n.setEnabled(false);
-    const num = this.total - stage;
     if (this.numberText) {
-      this.numberText.setText(String(num).padStart(2, '0'));
-      this.numberText.setFontSize(300);
+      if (this.tour) this.numberText.setText((this.roster.OGTournamentEnemyBackText || [])[stage + 1] || '');
+      else { this.numberText.setText(String(this.total - stage).padStart(2, '0'));
+             this.numberText.setFontSize(300); }
       this.numberText.setColor(this.hex('FFFFFF00'));
       LT.alpha(this.numberText, 0.65, 0.35);          // fades to 0.65, not 1
     }
-    if (this.nameText) this.nameText.setText((this.roster.RivalModeEnemyName || [])[num] || '');
+    if (this.nameText) this.nameText.setText(this.nameFor(stage));
     if (this.homeGroup) {
       this.homeGroup.setActive(true);
       this.homeGroup.setLocalScale(0, 0);

@@ -85,7 +85,11 @@
     eq('rival lines park off-screen', T['10PeopleLine1 Group'].rect.pos[0], 1538);
 
     /* today's GIF */
-    eq('GIF variants', GIF_VARIANTS.length, 5);
+    eq('GIF variants', GIF_VARIANTS.length, 8);
+    /* [sic] SetShareGIF 0x3FF44 only maps indices 0..4, so 5..7 have no art */
+    eq('GIF variants with a prefab', GIF_VARIANTS.filter(v => v.prefab).length, 4);
+    eq('the "Like us?" variant is the only one with the static picture',
+       GIF_VARIANTS.findIndex(v => v.thumb), 4);
     eq('GIF 0 blurb', GIF_VARIANTS[0].blurb,
        'This is the Ping Pong King Dance.\nLike it on our Facebook?');
     eq('GIF 3 title', GIF_VARIANTS[3].title, 'Special Move');
@@ -416,6 +420,66 @@
       eq('EndingScene page count', pages('SpriteAtlasTexture-EndingScene-2048x2048-fmt4'), 2);
       eq('Menu-Opponent01 is on page #17',
          g.sprites['Menu-Opponent01'][0], 'SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47#17');
+    }
+
+    /* ------------------------------------------- the numeric APK tables
+     * arrays.py originally read only string arrays, so every Vector3[] and
+     * int[] in TestEnemyDetail came out empty and the tournament bridge had
+     * no font sizes or positions to lay itself out with. */
+    {
+      const R = g.arrays.TestEnemyDetail;
+      eq('tournament roster', JSON.stringify(R.OGTournamentEnemyName),
+         '[null,"Jeff","Chelsea","Rose","Tracy","Leon","All staff"]');
+      eq('tournament job titles', JSON.stringify(R.OGTournamentEnemyBackText),
+         '[null,"Programmer","Artist","Marketing","Manager","Producer","Orangenose"]');
+      eq('tournament name font sizes', JSON.stringify(R.OGTournamentTextFontSize),
+         '[0,170,250,190,200,190,183]');
+      eq('rival dialog positions', R.RivalModeEnemyDialogPos.length, 11);
+      eq('rival dialog position 0', JSON.stringify(R.RivalModeEnemyDialogPos[0]), '[96,303,0]');
+      eq('tournament number position 1', JSON.stringify(R.OGTournamentEnemyNumberPos[1]), '[6,472,0]');
+      eq('Leon says', R.OGTournamentEnemyWordsWhenLose[5], "You've just beaten the No.1");
+    }
+
+    /* ------------------------------------------------------- rich text */
+    eq('a colour tag becomes a span',
+       richText('a <color="#FFCB39FF">b</color> c'),
+       'a <span style="color:#ffcb39ff">b</span> c');
+    eq('a size tag becomes a span',
+       richText('<size=51>x</size>'), '<span style="font-size:51px">x</span>');
+    eq('a named colour resolves', richText('<color=red>x</color>'),
+       '<span style="color:#ff0000">x</span>');
+    eq('plain text is left alone', richText('no tags here'), null);
+    eq('markup in the text is escaped', richText('<b>a < b</b>'),
+       '<span style="font-weight:bold">a &lt; b</span>');
+    /* a trailing newline has to survive, or two layered texts drift half a line */
+    eq('a trailing newline is kept', textForDom('a\n'), 'a\n\u200b');
+    eq('text without one is untouched', textForDom('a'), 'a');
+    eq("the GIF panel's title really is tagged",
+       GIF_VARIANTS[0].title, 'Today\'s <color="#FFCB39FF">GIF</color>');
+
+    /* ------------------------------------------------ the tournament */
+    {
+      const s = new Scene('RivalModeScene', document.createElement('div'));
+      const tb = new BridgeView(s, null, 'tournament');
+      eq('the tournament has six bouts', tb.total, 6);
+      eq('tournament stage 0 is Jeff', tb.nameFor(0), 'Jeff');
+      eq('tournament stage 5 is All staff', tb.nameFor(5), 'All staff');
+      eq('tournament sprites are indexed from 1', tb.spriteFor(0),
+         (tb.cfg.TournamentBridgeSprites || [])[1]);
+      eq('the ladder counts down instead',
+         new BridgeView(s, null, 'test').nameFor(0), 'BEST FRIEND');
+      s.destroy();
+    }
+    {
+      const host = document.createElement('div');
+      const v = new RivalModeSceneView(host, { }, 2);
+      eq('the tournament palette starts ten steps along', v.bgIndex(0), 0);
+      eq('tournament stage 1 background', v.bgIndex(1), 1);
+      eq('career stage 1 background',
+         new RivalModeSceneView(host, { }, 1).bgIndex(1), 1);
+      ok('the tournament reads the tournament bridge',
+         v.bridgeCfg.totalEnemyNum === 6, String(v.bridgeCfg.totalEnemyNum));
+      v.destroy();
     }
 
     /* ---- report */

@@ -132,21 +132,84 @@ class HomeSceneView {
     this.ballShadow = s.n(P + 'Title2 Image/BallShadow Image');
     this.playShadow = s.n(P + 'PlayBtnShadow Image');
     this.playBtn = s.n(P + 'PlayBtnShadow Image/Play Btn');
-    /* buttons a virgin save never sees -- OnViewEnable 0x41A88 gates each on
-       IsRivalModeComplete / isEndlessModeShow / FirstTimeOpenAfterUpdate */
+    this.endlessShadow = s.n(P + 'EndlessModeBtnShadow Image');
+    this.endlessBtn = s.n(P + 'EndlessModeBtnShadow Image/EndlessModeBtn Image');
+    this.tourShadow = s.n(P + 'OrangenoseTournamentShadow Image');
+    this.tourBtn = s.n(P + 'OrangenoseTournamentShadow Image/OrangenoseTournamentBtn Image');
+    this.newRivals = s.n(P + 'NewRivalsAlert Group');
+    this.newRivalsBg = s.n(P + 'NewRivalsAlert Group/AlertBg Image');
+    this.newRivalsOk = s.n(P + 'NewRivalsAlert Group/AlertBg Image/OKBtn Image');
+    this.endlessIntro = s.n(P + 'EndlessIntroAlert Group');
+    this.endlessIntroBg = s.n(P + 'EndlessIntroAlert Group/AlertBg Image');
+    this.endlessIntroOk = s.n(P + 'EndlessIntroAlert Group/AlertBg Image/OKBtn Image');
+    this.gameAlert = s.n(P + 'GameAlert Group');
+    this.gameAlertBtn = s.n(P + 'GameAlert Group/AlertPanel Image/AlertBtn Image');
     s.hide(P + 'NewRivalsAlert Group', P + 'GameAlert Group',
-           P + 'EndlessIntroAlert Group', P + 'EndlessModeBtnShadow Image',
-           P + 'OrangenoseTournamentShadow Image',
+           P + 'EndlessIntroAlert Group',
            P + 'PlayBtnShadow Image/Play Btn/New Image');
+    /* OnViewEnable 0x41A88 lays the bottom row out three ways, and each button
+       it turns on gets raycastTarget and a 1.02x breathing pulse. */
+    const db = DB.data;
+    this.showEndless = !!db.isEndlessModeShow;
+    this.showTour = !!db.IsRivalModeComplete;
+    if (this.showTour && !this.showEndless) {
+      if (this.endlessShadow) this.endlessShadow.setActive(false);
+      if (this.playShadow) this.playShadow.setLocalPos(-140, -753);
+    } else if (this.showTour && this.showEndless) {
+      if (this.tourShadow) this.tourShadow.setLocalPos(353.4, -724.6);
+      if (this.endlessShadow) this.endlessShadow.setLocalPos(-358, -726.8);
+      if (this.playShadow) this.playShadow.setLocalPos(0, -753);
+    } else if (!this.showTour && this.showEndless) {
+      if (this.tourShadow) this.tourShadow.setActive(false);
+      if (this.endlessShadow) this.endlessShadow.setLocalPos(-205, -726.8);
+      if (this.playShadow) this.playShadow.setLocalPos(134, -753);
+    } else {
+      if (this.tourShadow) this.tourShadow.setActive(false);
+      if (this.endlessShadow) this.endlessShadow.setActive(false);
+    }
+    for (const n of [this.showTour ? this.tourShadow : null,
+                     this.showEndless ? this.endlessShadow : null]) {
+      if (!n) continue;
+      n.setLocalScale(1, 1);
+      LT.scale(n, 1.02, 0.6).setEase(15).setLoopPingPong(-1);
+    }
     if (this.playBtn) this.playBtn.el.style.cursor = 'pointer';
   }
+
+  /* HomeScene::OnNewRivalsAlertBtnDown 0x42F22 and the two intro alerts.  Each
+     alert scales its panel in from 0 over 0.2 s on easeOutBack. */
+  showAlert(group, panel) {
+    if (!group) return;
+    group.setActive(true);
+    if (panel) { panel.setLocalScale(0, 0); LT.scale(panel, 1, 0.2).setEase(27); }
+    this.alert = group;
+  }
+  hideAlert() { if (this.alert) this.alert.setActive(false); this.alert = null; }
   destroy() { this.scene.destroy(); }
 
-  hitTest(x, y) {                       // the Play button's rect, in canvas units
-    const n = this.playShadow;
-    if (!n) return false;
+  inside(n, x, y) {
+    if (!n || !n.active) return false;
     const r = n.el.getBoundingClientRect();
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+  hitTest(x, y) { return this.inside(this.playShadow, x, y); }
+
+  /* -> 'play' | 'endless' | 'tournament' | 'alert' | null */
+  hit(x, y) {
+    if (this.alert) {
+      const ok = this.alert === this.endlessIntro ? this.endlessIntroOk
+               : this.alert === this.newRivals ? this.newRivalsOk : this.gameAlertBtn;
+      if (this.inside(ok, x, y)) {
+        const wasIntro = this.alert === this.endlessIntro;
+        this.hideAlert();
+        return wasIntro ? 'endless-ok' : 'alert';
+      }
+      return 'alert';                       // the panel eats everything else
+    }
+    if (this.inside(this.playShadow, x, y)) return 'play';
+    if (this.showEndless && this.inside(this.endlessShadow, x, y)) return 'endless';
+    if (this.showTour && this.inside(this.tourShadow, x, y)) return 'tournament';
+    return null;
   }
 
   /* HomeScene::OnViewEnable 0x41A88 */
@@ -156,6 +219,19 @@ class HomeSceneView {
     LT.value(0, 1, 3, v => Audio_.setBgmVolume(v));      // <OnViewEnable>m__3
     this.HomeTitleShowAnim();
     this.HomeBallAnimation();
+    /* FirstTimeOpenAfterUpdate raises the "New rivals added" alert once */
+    if (DB.data.FirstTimeOpenAfterUpdate) {
+      DB.data.FirstTimeOpenAfterUpdate = false; DB.save();
+      this.showAlert(this.newRivals, this.newRivalsBg);
+    }
+  }
+
+  /* HomeScene::OnEndlessModeBtnDown 0x42944 -- the first press shows the
+     PPK IMPOSSIBLE TEST intro (EnableImpossibleTestIntro defaults to 1). */
+  onEndlessBtn() {
+    if (DB.data.isEndlessModeEnter) return true;
+    this.showAlert(this.endlessIntro, this.endlessIntroBg);
+    return false;
   }
 
   /* HomeScene/<HomeTitleShowAnim>c__Iterator1: the three title pieces pop in

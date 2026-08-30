@@ -428,21 +428,48 @@ class EndingView {
 Object.assign(window, { TutorialView, EndingView });
 
 /* =========================================================== ShareGIF
- * "Today's GIF": a panel that slides in after a match, playing one of five
- * animated clips at 0.075 s a frame.  The five title/blurb pairs and their
+ * "Today's GIF": a panel that slides in after a match, playing one of the
+ * animated clips at 0.075 s a frame.  The eight title/blurb pairs and their
  * order are RivalModeScene's, at the switch on RivalMode_CurShareGIFIndex
- * (0x0CA8); the frames are the four ShareGIF prefabs. */
+ * (0x0CA8); SetShareGIF 0x3FF44 turns the index into a prefab.
+ *
+ * [sic] SetShareGIF only knows indices 0..4 -- four prefabs and the static
+ * "Like us?" picture.  Variants 5, 6 and 7 (CatchTheBall, KungFu, Ballet) fall
+ * through its switch, and their sprite arrays ship EMPTY in the scene, so all
+ * three show a title and a blurb over a blank panel.  Reproduced. */
 const GIF_VARIANTS = [
-  { title: "Today's GIF", blurb: 'This is the Ping Pong King Dance.\nLike it on our Facebook?',
-    prefab: 'prefab:ShareGIF001 Group', like: true },
-  { title: "Today's GIF", blurb: 'Share this funny GIF on Facebook.\nYour friends will laugh, I promise.',
-    prefab: 'prefab:ShareGIF002 Group', like: false },
-  { title: "Today's GIF", blurb: 'We worked for six sleepless months on the game.\nLike us on Facebook?',
-    prefab: 'prefab:ShareGIF003 Group', like: true },
-  { title: 'Special Move', blurb: 'Spread the joy!\nShare this special move to your friends on Facebook!',
-    prefab: 'prefab:ShareGIF004 Group', like: false },
-  { title: 'Like us?', blurb: "This is a great game, but we don't have enough players.\nLike us to spread the game to the world?",
-    prefab: null, like: true },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'This is the Ping Pong King Dance.\nLike it on our Facebook?',
+    prefab: 'prefab:ShareGIF001 Group', like: true,
+    link: 'https://www.facebook.com/OrangenoseStudio/videos/1747084185327946/' },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'Share this funny GIF on Facebook.\nYour friends will laugh, I promise.',
+    prefab: 'prefab:ShareGIF002 Group', like: false,
+    link: 'https://www.facebook.com/OrangenoseStudio/videos/1747081461994885/' },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'We worked for six sleepless months on the game.\nLike us on Facebook?',
+    prefab: 'prefab:ShareGIF003 Group', like: true,
+    link: 'https://www.facebook.com/OrangenoseStudio/videos/1747084811994550/' },
+  { title: 'Special Move',
+    blurb: 'Spread the joy!\nShare this special move to your friends on Facebook!',
+    prefab: 'prefab:ShareGIF004 Group', like: false,
+    link: 'https://www.facebook.com/OrangenoseStudio/videos/1747082861994745/' },
+  { title: '<color="#7FE0EAFF">Like</color> us?',
+    blurb: "This is a great game, but we don't have enough players.\nLike us to spread the game to the world?",
+    prefab: null, like: true, thumb: true,
+    link: 'https://www.facebook.com/OrangenoseStudio/' },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'I can beat you with my legs anytime.\nCute? Share, please.',
+    prefab: null, like: false,
+    link: 'https://www.facebook.com/OrangenoseStudio/' },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'Ping Pong vs Kong Fu.\nShare if you like it.',
+    prefab: null, like: false,
+    link: 'https://www.facebook.com/OrangenoseStudio/' },
+  { title: "Today's <color=\"#FFCB39FF\">GIF</color>",
+    blurb: 'Ballet and Ping Pong.\nLove the idea? Share plz.',
+    prefab: null, like: false,
+    link: 'https://www.facebook.com/OrangenoseStudio/' },
 ];
 
 class ShareGIFView {
@@ -485,10 +512,13 @@ class ShareGIFView {
         if (c.ShareImage && c.ShareImage.node) this.gifImg = this.gifScene.n(c.ShareImage.node);
       }
       if (this.gifImg) { this.gifImg.setActive(true); this.gifImg.setEnabled(true); }
-    } else if (this.shareImg) {
-      this.shareImg.setActive(true);                 // the "Like us" variant
+    } else if (this.v.thumb && this.shareImg) {
+      /* only GIFIndex 4 reaches SetShareGIF's `ShareImage.SetActive(1)` arm;
+         5..7 fall off the end of the switch with nothing to show */
+      this.shareImg.setActive(true);
       this.gifImg = this.shareImg;
     }
+    if (this.shareImg && !this.v.thumb) this.shareImg.setActive(false);
     /* the panel is parked at x = 2000 in the scene; ShowShareScene brings it to 0 */
   }
   destroy() {
@@ -511,7 +541,7 @@ class ShareGIFView {
     const g = this.gen = (this.gen | 0) + 1;
     if (this.group) LT.moveLocalX(this.group, 0, 0.35).setEase(12);   // 0x3FEBC
     await wait(400);
-    if (this.thumb) {
+    if (this.v.thumb && this.thumb) {
       this.thumb.setEnabled(true);
       LT.moveLocalY(this.thumb, 148, 0.5).setEase(15).setLoopPingPong(-1);
     }
@@ -527,3 +557,104 @@ class ShareGIFView {
 }
 
 Object.assign(window, { ShareGIFView, GIF_VARIANTS });
+
+/* ==================================================== TournamentInfo 0x451AC
+ * The panel that introduces the Orangenose Tournament the first time you beat
+ * the career.  It builds itself piece by piece -- line, cup, gift, orange head,
+ * crown and badge each pop to 1.15 and settle -- then the eight blinks start
+ * pulsing and the button appears.  The button is pressed twice: "Cool" swaps
+ * the first block of copy for the second and turns into "OK", and "OK" sweeps
+ * the whole panel off to x = -2000. */
+class TournamentInfoView {
+  constructor(host, mgr) {
+    this.mgr = mgr;
+    this.scene = new Scene('prefab:Tournament Group', host);
+    const s = this.scene;
+    const P = 'TournamentInfo Group/';
+    this.root = s.n('');
+    this.bg = s.n('TournamentInfoBg Image');
+    this.group = s.n(P.slice(0, -1));
+    this.line = s.n(P + 'TournamentLine Image');
+    this.badge = s.n(P + 'TournamentLine Image/TournamentBadge Image');
+    this.cup = s.n(P + 'TournamentCup Image');
+    this.gift = s.n(P + 'TournamentGift Image');
+    this.head = s.n(P + 'TournamentOrangeHead Image');
+    this.crown = s.n(P + 'TournamentOrangeHead Image/TournamentCrown Image');
+    this.info11 = s.n(P + 'TournamentInfo1-1 Text');
+    this.info12 = s.n(P + 'TournamentInfo1-2 Text');
+    this.info22 = s.n(P + 'TournamentInfo2-2 Text');
+    this.btn = s.n(P + 'TournamentInfoBtn Image');
+    this.blinks = [];
+    for (let i = 1; i <= 8; i++) { const n = s.n(P + 'Blink' + i + ' Image'); if (n) this.blinks.push(n); }
+    this.cfg = s.comp('', 'TournamentInfo') || {};
+    this.isCool = false; this.isOK = false;
+    if (this.root) this.root.setActive(true);
+    if (this.group) { this.group.setActive(false); this.group.setLocalScale(0, 0); }
+    if (this.bg) this.bg.setActive(false);
+    for (const n of this.blinks) if (n) n.setAlpha(0);
+    for (const n of [this.info11, this.info12, this.info22]) if (n) n.setAlpha(0);
+    if (this.btn) this.btn.setLocalScale(0, 0);
+    /* every piece starts small and below its home; the coroutine pops each one */
+    this.homes = new Map();
+    for (const n of [this.cup, this.gift, this.head]) if (n) this.homes.set(n, n.localPos.slice());
+  }
+  destroy() { this.gen = (this.gen | 0) + 1; this.scene.destroy(); }
+
+  hitTest(x, y) {
+    if (!this.btn || !this.btn.active) return false;
+    const r = this.btn.el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+  /* OnTounamentInfoBtnClick 0x451DF -- one flag per press, in order */
+  onBtn() { if (!this.isCool) this.isCool = true; else if (!this.isOK) this.isOK = true; }
+
+  /* <TournamentInfoShow>c__Iterator0 0x45214 */
+  async run() {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    const pop = (n, then) => {
+      if (!n) return;
+      LT.scale(n, 1.15, 0.15).setOnComplete(() => { if (alive()) LT.scale(n, 1, 0.15); });
+      if (then) then();
+    };
+    if (this.group) { this.group.setActive(true); LT.scale(this.group, 1, 0.3).setEase(27); }
+    if (this.bg) this.bg.setActive(true);
+    await wait(350); if (!alive()) return;
+    pop(this.line);
+    await wait(50); if (!alive()) return;
+    pop(this.cup, () => LT.moveLocalY(this.cup, 762.2, 0.5).setEase(15));
+    await wait(50); if (!alive()) return;
+    pop(this.gift, () => LT.moveLocalY(this.gift, 753, 0.5).setEase(15));
+    await wait(50); if (!alive()) return;
+    pop(this.head, () => LT.moveLocalY(this.head, 824, 0.5).setEase(15));
+    await wait(50); if (!alive()) return;
+    pop(this.crown); pop(this.badge);
+    await wait(50); if (!alive()) return;
+
+    for (const n of [this.info11, this.info12]) if (n) { n.setEnabled(true); LT.alpha(n, 1, 0.5); }
+    if (this.info11) LT.moveLocalY(this.info11, 111.56, 0.5).setEase(15);
+    if (this.info12) LT.moveLocalY(this.info12, 111.57, 0.5).setEase(15);
+    /* the eight sparkles each breathe on their own period */
+    const per = [0.4, 0.6, 0.45, 0.42, 0.5, 0.51, 0.52, 0.46];
+    this.blinks.forEach((n, i) => { if (n) LT.alpha(n, 1, per[i] || 0.5).setEase(15).setLoopPingPong(-1); });
+    await wait(600); if (!alive()) return;
+
+    if (this.btn) LT.scale(this.btn, 1, 0.5).setEase(27);
+    while (alive() && !this.isCool) await wait(16);
+    if (!alive()) return;
+    if (this.btn && this.cfg.TournamentInfo_OKBtnSprite) this.btn.setSprite(this.cfg.TournamentInfo_OKBtnSprite);
+    for (const n of [this.info11, this.info12]) if (n) { LT.moveLocalX(n, -149.7, 0.3); LT.alpha(n, 0, 0.3); }
+    await wait(300); if (!alive()) return;
+    if (this.info22) { LT.moveLocalX(this.info22, -7.13, 0.3); LT.alpha(this.info22, 1, 0.3); }
+    while (alive() && !this.isOK) await wait(16);
+    if (!alive()) return;
+    if (this.group) LT.moveLocalX(this.group, -2000, 0.5).setEase(26);
+    if (this.bg) LT.alpha(this.bg, 0, 0.5);
+    await wait(500); if (!alive()) return;
+    if (this.group) this.group.setActive(false);
+    if (this.bg) this.bg.setActive(false);
+    return true;                                   // HomeScene::OnTournamentInfoClose
+  }
+}
+
+Object.assign(window, { TournamentInfoView });

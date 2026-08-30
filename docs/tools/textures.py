@@ -106,6 +106,12 @@ def to_rgba(t):
 
 RESDIR = ''
 
+
+def atlas_page_name(name, path_id, is_multi_page):
+    """Stable per-page name for a texture whose name is shared by its siblings."""
+    return '%s#%d' % (name, path_id) if is_multi_page else name
+
+
 def main():
     global RESDIR
     src, RESDIR, dst = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -113,6 +119,12 @@ def main():
     sf = SerializedFile(src)
     from collections import Counter
     fc = Counter(); n = 0; skipped = []
+    # A SpriteAtlas larger than one page produces SEVERAL Texture2Ds sharing one
+    # name (MenuScene_Pack1 has four, EndingScene two).  Keying the output file
+    # by name alone silently keeps only the last page, so every sprite on the
+    # other pages is drawn from the wrong bitmap.  Suffix the repeats.
+    seen = Counter(read_texture(o)['name'] for o in sf.of_class('Texture2D'))
+    used = Counter()
     for o in sf.of_class('Texture2D'):
         t = read_texture(o)
         fc[FMT.get(t['fmt'], t['fmt'])] += 1
@@ -120,7 +132,9 @@ def main():
         if rgba is None or len(rgba) < t['width']*t['height']*4:
             skipped.append((t['name'], FMT.get(t['fmt'], t['fmt']), len(t['data'])))
             continue
-        safe = ''.join(c if c.isalnum() or c in '-_.() ' else '_' for c in t['name'])
+        name = atlas_page_name(t['name'], o.path_id, seen[t['name']] > 1)
+        used[t['name']] += 1
+        safe = ''.join(c if c.isalnum() or c in '-_.() #' else '_' for c in name)
         with open(os.path.join(dst, '%s.png' % safe), 'wb') as f:
             f.write(png(t['width'], t['height'], rgba))
         n += 1

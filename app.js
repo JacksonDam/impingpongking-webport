@@ -17,7 +17,15 @@ const SceneEnum = {                                     // GameMgr/SceneEnum
 const DB = {
   key: 'pingpongking.gamedb',
   data: { OutterStageOrder: 0, isTutorialPass: false, IsRivalModeComplete: false,
-          IsEnableSfx: true, numOfAttempt: 0 },
+          IsEnableSfx: true, numOfAttempt: 0,
+          /* the flags HomeScene::OnViewEnable 0x41A88 reads */
+          isEndlessModeShow: false, isEndlessModeEnter: false,
+          isTournamentModeEnter: false, FirstTimeOpenAfterUpdate: true,
+          HomeScene_FirstTimeAlertShow: false, NumOfHomeSceneShow: 0,
+          RivalMode_CurShareGIFIndex: 0, dateTimeFirstActive: 0,
+          RivalMode_LastShareShowsUp: 0, OutterStageRetryCount: {},
+          OGTournamentStageOrder: 0, IsTournamentComplete: false,
+          TournamentStageRetryCount: {} },
   load() {
     try { Object.assign(this.data, JSON.parse(localStorage.getItem(this.key) || '{}')); }
     catch (e) { }
@@ -31,9 +39,16 @@ class GameMgr {
     this.stage = stage;
     this.curSceneState = SceneEnum.HomeScene;
     this.db = DB.load();
+    /* OGStats::Init 0x6A520 -- numOfDaysInstalled is whole days since the first
+       launch, and HomeScene gates the Impossible Test on it reaching
+       EndlessModeShowFromDay (RemoteConfig .ctor leaves that at 1). */
+    if (!this.db.dateTimeFirstActive) { this.db.dateTimeFirstActive = Date.now(); DB.save(); }
+    this.numOfDaysInstalled = Math.floor((Date.now() - this.db.dateTimeFirstActive) / 86400000);
+    if (qs.has('days')) this.numOfDaysInstalled = parseInt(qs.get('days'), 10) || 0;
     if (qs.has('stage')) this.db.OutterStageOrder = parseInt(qs.get('stage'), 10) || 0;
     this.settings = null;
     this.view = null;
+    this.curGameMode = 1;                 // GameMode.RivalMode
   }
 
   trace(m) { if (qs.has('trace')) document.title = (document.title + ' | ' + m).slice(-300); }
@@ -45,13 +60,25 @@ class GameMgr {
 
   async boot() {
     const go = qs.get('goto');
-    if (qs.has('fresh')) { this.db.OutterStageOrder = 0; this.db.isTutorialPass = false; DB.save(); }
+    if (qs.has('fresh')) {
+      localStorage.removeItem(DB.key);
+      Object.assign(this.db, { OutterStageOrder: 0, isTutorialPass: false,
+        IsRivalModeComplete: false, isEndlessModeShow: false, isEndlessModeEnter: false,
+        isTournamentModeEnter: false, FirstTimeOpenAfterUpdate: true, NumOfHomeSceneShow: 0,
+        RivalMode_CurShareGIFIndex: 0 });
+      DB.save();
+    }
+    if (qs.has('complete')) { this.db.IsRivalModeComplete = true; this.db.isTutorialPass = true; DB.save(); }
     if (go === 'home') return this.goHome();
     if (go === 'rival') { this.db.isTutorialPass = true; return this.goRival(); }
     if (go === 'tutorial') { this.db.isTutorialPass = false; return this.goRival(); }
     if (go === 'ending') return this.goEnding();
     if (go === 'gif') return this.goGif(parseInt(qs.get('gif') || '0', 10));
     if (go === 'endless') return this.goEndlessList();
+    if (go === 'tournament') { this.db.isTournamentModeEnter = true; DB.save(); this.curGameMode = 2; return this.goRival(); }
+    if (go === 'tournamentinfo') {
+      const t = new TournamentInfoView(this.stage, this); this.view = t; return t.run();
+    }
     if (go === 'eyesight') return this.goMode('EyesightModeScene');
     if (go === 'concentrate') return this.goMode('ConcentrateModeScene');
     if (go === 'invert') return this.goMode('InvertModeScene');
@@ -69,7 +96,15 @@ class GameMgr {
 
   goHome() {
     this.clearView();
+    this.curGameMode = 1;                       // HomeScene::OnViewEnable 0x41A88
     this.curSceneState = SceneEnum.HomeScene;
+    /* HomeScene::OnViewEnable 0x41A88, IL_0051 */
+    if (this.numOfDaysInstalled >= 1 && this.db.isTutorialPass &&
+        this.db.OutterStageOrder >= 0) {           // EndlessModeShowFromStage defaults to 0
+      this.db.isEndlessModeShow = true;
+    }
+    this.db.NumOfHomeSceneShow = (this.db.NumOfHomeSceneShow | 0) + 1;
+    DB.save();
     if (!this.settings) this.settings = new SettingsView(this.stage, this);
     this.settings.scene.root.style.zIndex = 5;
     this.settings.ChangeSettingSpriteToMenuSprite();
@@ -80,18 +115,38 @@ class GameMgr {
     h.enter();
   }
 
+  /* HomeScene::OnTournamentModeBtnUp 0x42740 -- the first press raises the
+     TournamentInfo panel; only once it has been dismissed does the tournament
+     itself start (isTournamentModeEnter). */
+  async goTournament() {
+    if (!this.db.isTournamentModeEnter) {
+      this.clearView();
+      if (this.settings) this.settings.SettingBtnHide(0.1);
+      const t = new TournamentInfoView(this.stage, this);
+      this.view = t;
+      await t.run();
+      this.db.isTournamentModeEnter = true; DB.save();
+    }
+    Audio_.play('mouse_click');
+    this.curGameMode = 2;
+    this.goRival();
+  }
+
   goRival() {
     this.clearView();
     this.curSceneState = SceneEnum.RivalModeScene;
     if (!this.settings) this.settings = new SettingsView(this.stage, this);
     this.settings.scene.root.style.zIndex = 5;
     this.settings.ChangeSettingSpriteToPauseSprite();
-    const v = new RivalModeSceneView(this.stage, this);
+    const v = new RivalModeSceneView(this.stage, this, this.curGameMode || 1);
     this.stage.insertBefore(v.scene.root, this.settings.scene.root);
     this.view = v;
     /* RivalModeScene::OnViewEnable instantiates the tutorial prefab the first
        time through; Reset_EnterGame runs when I'm Ready is pressed. */
-    if (!this.db.isTutorialPass && this.db.OutterStageOrder === 0) {
+    if (this.curGameMode === 2) {
+      if (qs.has('nobridge')) v.Reset_EnterGame(this.db.OGTournamentStageOrder | 0);
+      else v.EnterWithBridge(this.db.OGTournamentStageOrder | 0);
+    } else if (!this.db.isTutorialPass && this.db.OutterStageOrder === 0) {
       v.prepareForTutorial();
       this.tutorial = new TutorialView(this.stage, this, v);
       this.stage.insertBefore(this.tutorial.scene.root, this.settings.scene.root);
@@ -115,6 +170,12 @@ class GameMgr {
   onPause(paused) { if (this.view && this.view.Pause) this.view.Pause(paused); }
 
   /* HomeScene::OnEndlessModeBtnDown 0x42B4C -> the IMPOSSIBLE TEST list */
+  enterEndless() {
+    this.db.isEndlessModeEnter = true; DB.save();
+    Audio_.play('mouse_click');
+    this.goEndlessList();
+  }
+
   goEndlessList() {
     this.clearView();
     this.curSceneState = SceneEnum.EndlessListShow;
@@ -139,20 +200,49 @@ class GameMgr {
     v.enter();
   }
 
+  /* WinAnim 0x0B38: the share panel is due when you have gone three stages
+     without one (or have retried this stage five times), except at the three
+     stages the game reserves for something else. */
+  shareIsDue() {
+    const d = this.db;
+    const outter = d.OutterStageOrder | 0, tour = d.OGTournamentStageOrder | 0;
+    const retries = (d.OutterStageRetryCount || {})[outter] | 0;
+    const sum = outter + tour;
+    if (!(retries >= 5 || (sum - (d.RivalMode_LastShareShowsUp | 0)) >= 3)) return false;
+    if (outter === 5 || sum === 9 || sum === 14) return false;
+    return true;
+  }
+
   async onMatchWon(stage) {
     /* the beaten rival says his line on the bridge before the ladder moves on */
     if (this.view && this.view.ShowBeatenThenNext) await this.view.ShowBeatenThenNext(stage);
-    this.db.OutterStageOrder = Math.min(49, stage + 1);
     this.db.numOfAttempt = 0;
-    DB.save();
-    if (stage >= 49) { this.db.IsRivalModeComplete = true; DB.save(); this.goEnding(); return; }
-    /* the share panel comes up between matches, as WinAnim does */
-    this.db.gifIndex = ((this.db.gifIndex | 0) + 1) % 5;
-    DB.save();
-    if (stage % 3 === 2) this.goGif(this.db.gifIndex); else this.goRival();
+    if (this.curGameMode === 2) {
+      this.db.OGTournamentStageOrder = Math.min(6, stage + 1);
+      DB.save();
+      if (stage >= 5) { this.db.IsTournamentComplete = true; DB.save(); this.goEnding(); return; }
+    } else {
+      this.db.OutterStageOrder = Math.min(49, stage + 1);
+      DB.save();
+      if (stage >= 49) { this.db.IsRivalModeComplete = true; DB.save(); this.goEnding(); return; }
+    }
+    if (this.shareIsDue()) {
+      this.db.RivalMode_LastShareShowsUp = (this.db.OutterStageOrder | 0) + (this.db.OGTournamentStageOrder | 0);
+      /* [sic] the index wraps at FBPostCount (4), so variants 5..7 are dead */
+      let i = (this.db.RivalMode_CurShareGIFIndex | 0);
+      if (i > 4) i = 0;
+      this.db.RivalMode_CurShareGIFIndex = i + 1;
+      DB.save();
+      this.goGif(i);
+      return;
+    }
+    this.goRival();
   }
   onMatchLost(stage) {
     this.db.numOfAttempt = (this.db.numOfAttempt || 0) + 1;
+    const key = this.curGameMode === 2 ? 'TournamentStageRetryCount' : 'OutterStageRetryCount';
+    this.db[key] = this.db[key] || {};
+    this.db[key][stage] = (this.db[key][stage] | 0) + 1;
     DB.save();
     this.goRival();
   }
@@ -179,6 +269,10 @@ class GameMgr {
       const h = this.view.hit(x, y);
       if (h === 'back') this.goHome();
       else if (h) this.goMode(h);
+      return;
+    }
+    if (this.view instanceof TournamentInfoView) {
+      if (this.view.hitTest(x, y)) this.view.onBtn();
       return;
     }
     if (this.view instanceof ShareGIFView) {
@@ -209,7 +303,13 @@ class GameMgr {
       return;
     }
     if (this.view instanceof HomeSceneView) {
-      if (this.view.hitTest(x, y)) this.view.onLetsFight();
+      const h = this.view.hit(x, y);
+      if (h === 'play') this.view.onLetsFight();
+      else if (h === 'endless') {
+        /* OnEndlessModeBtnDown 0x42944 -- the intro alert on the first press */
+        if (this.view.onEndlessBtn()) this.enterEndless();
+      } else if (h === 'endless-ok') this.enterEndless();   // OnEndlessIntroOkBtnDown 0x42EBC
+      else if (h === 'tournament') this.goTournament();
       return;
     }
     if (this.view && this.view.onPointer) this.view.onPointer(x, y);

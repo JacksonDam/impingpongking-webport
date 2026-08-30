@@ -8,7 +8,7 @@ that on the first sprite.
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from unityfs import SerializedFile
-from textures import read_texture
+from textures import read_texture, atlas_page_name
 
 
 def read_sprite(o):
@@ -46,12 +46,17 @@ def read_sprite(o):
 
 
 def collect(paths):
+    from collections import Counter
     out, atlases = [], {}
     for p in paths:
         sf = SerializedFile(p)
+        multi = Counter(read_texture(o)['name'] for o in sf.of_class('Texture2D'))
         for o in sf.of_class('Texture2D'):
             t = read_texture(o)
-            atlases[(sf.name, o.path_id)] = (t['name'], t['width'], t['height'])
+            # a multi-page atlas repeats one name across its pages; the sprite
+            # points at a specific page by path_id, so name the pages apart
+            nm = atlas_page_name(t['name'], o.path_id, multi[t['name']] > 1)
+            atlases[(sf.name, o.path_id)] = (nm, t['width'], t['height'])
         for o in sf.of_class('Sprite'):
             try: s = read_sprite(o)
             except Exception as e:

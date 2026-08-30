@@ -16,6 +16,49 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const randRange = (a, b) => a + Math.floor(Math.random() * (b - a));
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
 
+/* Unity's UI.Text rich text.  Only the four tags the game actually uses appear
+ * in its strings: <b>, <i>, <size=n> and <color=...>, the last with or without
+ * quotes round the value and either #RRGGBB[AA] or one of Unity's names. */
+const RICH_NAMED = {
+  aqua: '#00ffff', black: '#000000', blue: '#0000ff', brown: '#a52a2a',
+  cyan: '#00ffff', darkblue: '#0000a0', fuchsia: '#ff00ff', green: '#008000',
+  grey: '#808080', lightblue: '#add8e6', lime: '#00ff00', magenta: '#ff00ff',
+  maroon: '#800000', navy: '#000080', olive: '#808000', orange: '#ffa500',
+  purple: '#800080', red: '#ff0000', silver: '#c0c0c0', teal: '#008080',
+  white: '#ffffff', yellow: '#ffff00',
+};
+/* CSS collapses a newline that ends a block, Unity's UI.Text does not -- and
+ * two texts layered on each other (the tournament panel's white copy and the
+ * yellow words that slot into its gaps) shift half a line apart when the line
+ * counts disagree.  Keep the trailing blank line. */
+function textForDom(s) { return /\n$/.test(s) ? s + '\u200b' : s; }
+
+function richText(s) {
+  const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (!/<(b|i|size|color)\b|<\/(b|i|size|color)>/i.test(s)) return null;
+  let out = '', i = 0;
+  const re = /<(\/)?(b|i|size|color)(?:=\s*"?([^">]*)"?)?>/gi;
+  let m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(i, m.index));
+    i = re.lastIndex;
+    const close = !!m[1], tag = m[2].toLowerCase(), val = (m[3] || '').trim();
+    if (close) { out += '</span>'; continue; }
+    if (tag === 'b') out += '<span style="font-weight:bold">';
+    else if (tag === 'i') out += '<span style="font-style:italic">';
+    else if (tag === 'size') out += `<span style="font-size:${parseFloat(val) || 0}px">`;
+    else {
+      let c = val.toLowerCase();
+      if (RICH_NAMED[c]) c = RICH_NAMED[c];
+      /* #RRGGBBAA is not a colour CSS understood before 2017, and Unity writes
+         the alpha last just as CSS does, so it passes straight through */
+      out += `<span style="color:${c}">`;
+    }
+  }
+  out += esc(s.slice(i));
+  return out;
+}
+
 /* OGGameUtil::HexToColor -- "RRGGBB" or "RRGGBBAA" to a 0..1 RGBA quad */
 function hexColor(h) {
   const v = p => parseInt(h.substr(p, 2), 16) / 255;
@@ -165,7 +208,11 @@ class Node {
   setAlpha(a) { const c = this.tint.slice(); c[3] = a; return this.setColor(c); }
   get alpha() { return this.tint[3]; }
 
-  setText(s) { if (this.txt) this.txt.textContent = s; return this; }
+  setText(s) {
+    if (this.txt) { const t = textForDom(s), h = richText(t);
+                    if (h === null) this.txt.textContent = t; else this.txt.innerHTML = h; }
+    return this;
+  }
   setFontSize(px) { if (this.txt) this.txt.style.fontSize = px + 'px'; return this; }
 
   /* A RectTransform's localPosition is NOT its anchoredPosition: they differ by
@@ -486,7 +533,8 @@ class Scene {
       if (n.text) {
         const tx = document.createElement('div');
         tx.className = 'txt';
-        tx.textContent = n.text.text;
+        { const t = textForDom(n.text.text), h = richText(t);
+          if (h === null) tx.textContent = t; else tx.innerHTML = h; }
         Object.assign(tx.style, {
           width: '100%', height: '100%',
           fontSize: `${n.text.size}px`,
