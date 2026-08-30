@@ -893,6 +893,21 @@
       t.btnDown(true);
       LT.tick(performance.now() + 100);
       near('a press dips it to -746.8', t.leftBtn.localPos[1], -746.8, 1);
+
+      /* TutorialEndAnim sweeps the table and the player off to x = -2000 to
+         clear the stage, and Reset_AllDataAfterTutorialPass is what puts them
+         back.  Without it the first match starts with no table at all. */
+      const c = rival.core;
+      c.table.setLocalPos(-2000, 105);
+      c.manA.setLocalPos(-2000, -240);
+      t.Reset_AllDataAfterTutorialPass();
+      near('the table comes back', c.table.localPos[0], 0, 0.5);
+      near('at its own height', c.table.localPos[1], 105, 0.5);
+      eq('and its own size', c.table.rect.w + 'x' + c.table.rect.h, '483x554');
+      near('the player comes back too', c.manA.localPos[0], -387.6, 0.5);
+      eq('at his own size', c.manA.rect.w + 'x' + c.manA.rect.h, '410x410');
+      ok('and the score pads are switched on',
+         rival.playerPad.img && rival.playerPad.img.style.visibility !== 'hidden');
       t.destroy(); rival.destroy();
     }
 

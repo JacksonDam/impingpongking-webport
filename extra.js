@@ -566,8 +566,35 @@ class TutorialView {
     if (!alive()) return;
     await this.TutorialEndAnim(alive);
     if (!alive()) return;
-    /* Bridge.BridgeShowWhenEnterGame -> Reset_EnterGame -> BridgeHide */
+    /* Bridge.BridgeShowWhenEnterGame, 2 s, then Reset_AllDataAfterTutorialPass
+       + Scene.Reset_EnterGame (0x2763) */
+    this.Reset_AllDataAfterTutorialPass();
     this.mgr.onTutorialDone();
+  }
+
+  /* RivalModeTutorial::Reset_AllDataAfterTutorialPass 0x3Bxxx.
+     TutorialEndAnim sweeps the table and the player off to x = -2000 to clear
+     the stage; this is what puts them back -- and it restores their sizes too,
+     because the tutorial ran at its own scale.  Without it the first match
+     starts with no table at all. */
+  Reset_AllDataAfterTutorialPass() {
+    const c = this.rival && this.rival.core;
+    if (!c) return;
+    c.ManACurPos = 'A1';
+    c.ManBCurPos = 'B1';
+    c.IsAbleToHitBack = false;
+    c.IsHitBack = false;
+    if (c.manA) { c.manA.setLocalPos(-387.6, -240); c.manA.setSize(410, 410); }
+    if (c.table) { c.table.setLocalPos(0, 105); c.table.setSize(483, 554); }
+    /* the score pads come back on, transparent, and m__0 fades them up 0.8 s
+       later -- Reset_EnterGame's own fade does the rest */
+    const S = this.rival;
+    for (const n of [S.playerPad, S.enemyPad, S.playerScoreText, S.enemyScoreText, S.dotText])
+      if (n) { n.setEnabled(true); n.setColor(hexColor('16161600')); }
+    LT.delayedCall(0.8, () => {
+      for (const n of [S.playerPad, S.enemyPad, S.playerScoreText, S.enemyScoreText, S.dotText])
+        if (n) LT.alpha(n, 1, 0.4);
+    });
   }
 
   /* <TutorialEndAnim>c__Iterator3 0x3FB08 -- I'M READY clears the stage: the
