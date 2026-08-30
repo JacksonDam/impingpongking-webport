@@ -28,7 +28,11 @@ const DB = {
           TournamentStageRetryCount: {}, isEndlessEndterAnyMode: false,
           NumOfRateUsShow: 0, isWin3BallToPassShow: false,
           isWin5BallToPassShow: false, totalEnemyNum: 50, setName: 'D',
-          Tutorial_RetryCount: 0 },
+          Tutorial_RetryCount: 0,
+          /* the adaptive-difficulty state -- GameDb::.ctor 0x46F1C */
+          UserLevelType: 0, UserBiasPercentage: 0.5, BiasPercentagePivot: 0,
+          Slow_BiasPercentage: 0.5, Middle_BiasPercentage: 0.5,
+          MiddleHigh_BiasPercentage: 0.5, Fast_BiasPercentage: 0.5 },
   load() {
     try { Object.assign(this.data, JSON.parse(localStorage.getItem(this.key) || '{}')); }
     catch (e) { }
@@ -47,6 +51,10 @@ class GameMgr {
        EndlessModeShowFromDay (RemoteConfig .ctor leaves that at 1). */
     if (!this.db.dateTimeFirstActive) { this.db.dateTimeFirstActive = Date.now(); DB.save(); }
     this.numOfDaysInstalled = Math.floor((Date.now() - this.db.dateTimeFirstActive) / 86400000);
+    /* GameMgr::Init 0x27EC -- every launch gives five of your winning streak
+       back, so a break from the game makes it easier again */
+    this.db.BiasPercentagePivot = Math.max(0, (this.db.BiasPercentagePivot || 0) - 5);
+    DB.save();
     if (qs.has('days')) this.numOfDaysInstalled = parseInt(qs.get('days'), 10) || 0;
     if (qs.has('stage')) this.db.OutterStageOrder = parseInt(qs.get('stage'), 10) || 0;
     this.settings = null;
@@ -354,6 +362,8 @@ class GameMgr {
       else if (h === 'tournament') this.goTournament();
       return;
     }
+    /* tap to restart after a lost ball -- OnTouchPanelClick 0x32BEC */
+    if (this.view && this.view.OnTouchPanelClick && this.view.OnTouchPanelClick()) return;
     if (this.view && this.view.onPointer) this.view.onPointer(x, y);
   }
 }
@@ -483,6 +493,7 @@ async function boot() {
       const v = mgr.view;
       const isMode = v instanceof ModeSceneView;
       if (!(v instanceof RivalModeSceneView) && !isMode) return;
+      if (v.OnTouchPanelClick && v.OnTouchPanelClick()) return;
       const c = v.core;
       if (!c.IsAbleToHitBack || c.IsInSwingColddown) return;
       const left = c.ManAHitPos === 'A1';

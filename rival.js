@@ -718,6 +718,7 @@ class RivalModeSceneView {
     this.dotText = N(C.DotText);
     this.winLoseText = N(C.WinLoseBallText);
     this.missText = N(C.MissNotificationText);
+    this.tapToRestart = s.n('Canvas/Core/TapToRestart Text');
     this.padBgs = ['PlayerScoreTopGroupBgImage', 'PlayerScoreBottomGroupBgImage',
                    'PlayerScoreLongGroupBgImage', 'EnemyScoreTopGroupBgImage',
                    'EnemyScoreBottomGroupBgImage', 'EnemyScoreLongGroupBgImage']
@@ -805,6 +806,13 @@ class RivalModeSceneView {
     for (const n of [this.hitL, this.hitR, this.hitLShadow, this.hitRShadow,
                      this.hitLText, this.hitRText]) if (n) LT.alpha(n, 0, 0.3);
   }
+  /* RivalModeScene::HideHitBtnImmidiatly -- no fade, and the Images and Texts
+     are disabled outright so nothing can paint over Tap to restart */
+  HideHitBtnImmidiatly() {
+    for (const n of [this.hitL, this.hitR, this.hitLText, this.hitRText]) if (n) n.setEnabled(false);
+    for (const n of [this.hitL, this.hitR, this.hitLShadow, this.hitRShadow,
+                     this.hitLText, this.hitRText]) if (n) n.setAlpha(0);
+  }
 
   /* LeftBtnDownAnim 0x34F1C / RightBtnDownAnim 0x34F74: the button drops 30 px
      over 0.05 s and its shadow goes out -- it is pressed into the page, not
@@ -826,6 +834,103 @@ class RivalModeSceneView {
     if (this._btnTween && this._btnTween[left ? 0 : 1]) this._btnTween[left ? 0 : 1].cancel();
     if (sh) sh.setEnabled(true);
     if (n) n.setLocalPos(left ? -17.5 : 17.5, -742);
+  }
+
+  /* ------------------------------------------------ adaptive difficulty
+   * The level table's frame intervals are not what the ball actually flies at.
+   * Every ball, `SetFromBall` recomputes all three from `UserBiasPercentage`,
+   * a running measure of how well you are doing, and then scales them again by
+   * a curve chosen from your `UserLevelType` and the stage you are on.
+   *
+   * `BiasPercentagePivot` is the counter behind it: +1 for every ball you win,
+   * -5 every time the app starts (GameMgr::Init 0x27EC), floored at 0.  A
+   * higher pivot means a LOWER bias, and a lower bias means a shorter frame
+   * interval -- a faster ball.  Play well and the game speeds up.
+   */
+
+  /* RivalModeScene::SetUserLevel 0xD164 -- once, on the first ball you ever
+     win, from how many retries the tutorial and the first rival took you */
+  SetUserLevel() {
+    const n = (DB.data.Tutorial_RetryCount | 0) +
+              ((DB.data.OutterStageRetryCount || {})[0] | 0);
+    if (n <= 1)      { DB.data.UserLevelType = 1; DB.data.UserBiasPercentage = 0.30; }
+    else if (n <= 2) { DB.data.UserLevelType = 2; DB.data.UserBiasPercentage = 0.45; }
+    else if (n <= 3) { DB.data.UserLevelType = 3; DB.data.UserBiasPercentage = 0.45; }
+    else             { DB.data.UserLevelType = 4; DB.data.UserBiasPercentage = 0.70; }
+    DB.save();
+  }
+
+  /* RivalModeScene::ChangeUserBiasPercentage 0x3xxxx */
+  ChangeUserBiasPercentage() {
+    const d = DB.data;
+    const o = d.OutterStageOrder;
+    if (o > 2 && !d.UserLevelType) d.UserLevelType = 2;
+    /* the pivot is capped tighter as the ladder gets steeper */
+    if (o === 7 && d.BiasPercentagePivot > 15) d.BiasPercentagePivot = 15;
+    else if (o === 8 && d.BiasPercentagePivot > 13) d.BiasPercentagePivot = 13;
+    else if (o === 9 && d.BiasPercentagePivot > 11) d.BiasPercentagePivot = 11;
+    const piv = d.BiasPercentagePivot || 0;
+    switch (d.UserLevelType) {
+      case 1: d.UserBiasPercentage = d.Fast_BiasPercentage - (piv / 5) * 0.025; break;
+      case 2: d.UserBiasPercentage = d.Middle_BiasPercentage - (piv / 4) * 0.03; break;
+      case 3: d.UserBiasPercentage = d.MiddleHigh_BiasPercentage - (piv / 4) * 0.03; break;
+      case 4: d.UserBiasPercentage = d.Slow_BiasPercentage - (piv / 4) * 0.027; break;
+    }
+    /* and a floor, so the ball can never become impossible */
+    if (d.UserLevelType === 4) { if (d.UserBiasPercentage < 0.095) d.UserBiasPercentage = 0.095; }
+    else if (o <= 9)           { if (d.UserBiasPercentage < 0.09) d.UserBiasPercentage = 0.09; }
+    else if (o < 16)           { if (d.UserBiasPercentage < 0.091) d.UserBiasPercentage = 0.091; }
+    else                       { if (d.UserBiasPercentage < 0.09) d.UserBiasPercentage = 0.09; }
+  }
+
+  /* Mathf.Lerp(start, end, cur/total), clamped -- RivalModeScene::BiasFormula */
+  BiasFormula(a, b, cur, total) {
+    const t = Math.min(1, Math.max(0, cur / total));
+    return a + (b - a) * t;
+  }
+
+  /* RivalModeScene::SetUserSpeedByBiasPercentage.  Bounds are the same in every
+     branch; what the UserLevelType switch picks is the curve applied on top,
+     and past rival seven there is no curve at all. */
+  SetUserSpeedByBiasPercentage() {
+    const d = DB.data, bias = d.UserBiasPercentage;
+    const mix = (hi, lo) => lo + (hi - lo) * bias;
+    this.EnemySideFrameInterval = mix(0.067, 0.024);
+    this.MiddleFrameInterval = mix(0.040, 0.017);
+    this.PlayerSideFrameInterval = mix(0.067, 0.022);
+    const type = d.UserLevelType;
+    if (!type) return;
+    const o = d.OutterStageOrder, x = o * 5 + this.PlayerScore;
+    const B = this.BiasFormula.bind(this);
+    let mid, side;
+    if (o < 3) {
+      mid = B(type === 1 ? 1 : 1, type === 1 ? 0.88 : 0.92, x, 15);
+      side = B(1.6, 1.2, x, 15);
+    } else if (o < 5) {
+      mid = type === 1 ? B(0.88, 0.80, x - 15, 30) : B(0.92, 0.88, x - 15, 30);
+      side = type === 1 ? B(1.2, 0.90, x - 15, 30) : B(1.2, 0.95, x - 15, 30);
+    } else if (o < 7) {
+      /* [sic] level type 1 measures this band from x-25 and the other three
+         from x-45, though the bands themselves are identical */
+      mid = type === 1 ? B(0.80, 0.71, x - 25, 40)
+          : type === 2 ? B(0.88, 0.74, x - 45, 40)
+                       : B(0.88, 0.78, x - 45, 40);
+      side = type === 1 ? B(0.90, 0.71, x - 25, 40)
+           : type === 2 ? B(0.95, 0.74, x - 45, 40)
+                        : B(0.95, 0.78, x - 45, 40);
+      if (type === 4) {
+        /* [sic] and type 4's enemy side alone uses 0.76, not 0.78 */
+        this.EnemySideFrameInterval *= B(0.95, 0.76, x - 45, 40);
+        this.MiddleFrameInterval *= mid;
+        this.PlayerSideFrameInterval *= side;
+        return;
+      }
+    } else {
+      return;                                   // stages 7+ get no curve at all
+    }
+    this.MiddleFrameInterval *= mid;
+    this.PlayerSideFrameInterval *= side;
+    this.EnemySideFrameInterval *= side;
   }
 
   /* three balls win a match for the first five rivals, five after that --
@@ -1063,6 +1168,11 @@ class RivalModeSceneView {
       c.ChangeSequence(`Lose-${c.ManAHitPos}-${c.ManBNextPos} Image`);
       c.LoseBallTrailAnimDelay = 0.04;
       this.PlayerScore++;
+      DB.data.BiasPercentagePivot = (DB.data.BiasPercentagePivot || 0) + 1;
+      /* the first ball of the first rival is where the game decides how good
+         you are, from how hard the tutorial was for you (0x24CC) */
+      if (DB.data.OutterStageOrder === 0 && this.PlayerScore === 1) this.SetUserLevel();
+      DB.save();
       this.won = true;
       this.WinAnim();
       return;
@@ -1071,6 +1181,10 @@ class RivalModeSceneView {
     this.CurRoundData = m.Level_GetRoundDataAndDelete(this.RoundCount);
     this.MiddleFrameInterval = m.middleFrameInterval;
     this.PlayerSideFrameInterval = m.playerSideFrameInterval;
+    /* ...and then the level table's intervals are thrown away and recomputed
+       from how well you have been doing (0x0113) */
+    this.ChangeUserBiasPercentage();
+    this.SetUserSpeedByBiasPercentage();
 
     const tbl = this.standing();
     const e = tbl[c.ManBCurPos] || tbl.B1;
@@ -1231,6 +1345,7 @@ class RivalModeSceneView {
   /* RivalModeScene/<LoseAnim>c__Iterator0 -- the screen inverts to #161616 */
   LoseAnim() {
     const c = this.core;
+    this.HideHitBtnImmidiatly();                 // 0x... , first line of LoseAnim
     Audio_.play('Lose');
     const black = this.hex('161616FF');
     if (this.bg) this.bg.setColor(black);
@@ -1247,13 +1362,54 @@ class RivalModeSceneView {
       c.manASurprise.setLocalScale(0.2, 0.2);
       LT.scale(c.manASurprise, [3, 2.4], 0.3).setEase(24);
     }
-    if (this.missText) {
-      const s = ['Tapped too late!', 'Tapped too early!', 'Wrong side!', ''][c.MissHitInfo];
-      this.missText.setText(s);
-      this.missText.setColor(this.hex('161616FF'));
-      LT.alpha(this.missText, 1, 0.2);
-      LT.delayedCall(1.0, () => LT.alpha(this.missText, 0, 0.3));
+    if (!matchLost) this.MissMessage();
+  }
+
+  /* the tail of <LoseAnim>c__Iterator0 after a lost BALL (0x0F00): the screen
+     unblocks, "missed!" comes up in white, and then -- unless the miss was
+     unclassified -- it swaps for the reason, waits two seconds and gives way
+     to "Tap to restart".  The rally does not resume until you tap. */
+  async MissMessage() {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    const c = this.core, t = this.missText;
+    await wait(500); if (!alive()) return;
+    this.TouchBlockEnable(false);
+    if (t) {
+      t.setColor([1, 1, 1, 1]);
+      t.setText('missed!');
+      LT.alpha(t, 1, 0.18);
     }
+    await wait(350); if (!alive()) return;
+    if (c.MissHitInfo !== Miss.None) {
+      if (t) LT.alpha(t, 0, 0.18);
+      await wait(180); if (!alive()) return;
+      if (t) {
+        t.setText(['Hit too late!', 'Hit too early!', 'Wrong side!', ''][c.MissHitInfo]);
+        LT.alpha(t, 1, 0.18);
+      }
+    }
+    await wait(2000); if (!alive()) return;
+    if (t) LT.alpha(t, 0, 0.18);
+    await wait(200); if (!alive()) return;
+    if (this.tapToRestart) {
+      this.tapToRestart.setActive(true);
+      this.tapToRestart.setColor([1, 1, 1, 0]);
+      LT.alpha(this.tapToRestart, 1, 1);
+    }
+    this.isLose = true;                     // OnTouchPanelClick is armed
+  }
+
+  /* RivalModeScene::OnTouchPanelClick 0x32BEC */
+  OnTouchPanelClick() {
+    if (!this.isLose) return false;
+    this.isLose = false;
+    this.gen = (this.gen | 0) + 1;          // StopCoroutine("LoseAnim")
+    if (this.missText) { LT.cancel(this.missText); this.missText.setAlpha(0); }
+    if (this.tapToRestart) { LT.cancel(this.tapToRestart); this.tapToRestart.setActive(false); }
+    this.Reset_WinBall();
+    this.ShowHitBtn(1);                         // <OnTouchPanelClick>m__F
+    return true;
   }
 
   /* LoseAnim 0x0AB7: one ball from losing the match, and you have not already
@@ -1274,6 +1430,7 @@ class RivalModeSceneView {
       if (c.manASurprise) c.manASurprise.setEnabled(false);
       if (c.manBSurprise) c.manBSurprise.setEnabled(false);
       if (this.winLoseText) this.winLoseText.setEnabled(false);
+      if (lost && this.EnemyScore < this.matchGoal) return;   // MissMessage waits for a tap
       if (won && this.PlayerScore >= this.matchGoal) { this.mgr.onMatchWon(this.stageOrder); return; }
       if (lost && this.EnemyScore >= this.matchGoal) {
         if (this.reviveIsDue) {

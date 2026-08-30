@@ -713,6 +713,77 @@
       b.destroy();
     }
 
+    /* ------------------------------------------- adaptive difficulty
+     * The level table's frame intervals are NOT what the ball flies at: every
+     * ball, SetFromBall throws them away and recomputes all three from
+     * UserBiasPercentage, which tracks how well you have been doing. */
+    {
+      const host = document.createElement('div');
+      const keep = JSON.stringify(DB.data);
+      const v = new RivalModeSceneView(host, mgr, 1);
+      v.stageOrder = 0;
+
+      /* SetUserLevel 0xD164 -- from how hard the tutorial was for you */
+      DB.data.Tutorial_RetryCount = 0; DB.data.OutterStageRetryCount = {};
+      v.SetUserLevel();
+      eq('a clean tutorial makes you type 1', DB.data.UserLevelType, 1);
+      near('and starts you fast', DB.data.UserBiasPercentage, 0.30);
+      DB.data.Tutorial_RetryCount = 4;
+      v.SetUserLevel();
+      eq('four retries make you type 4', DB.data.UserLevelType, 4);
+      near('and start you slow', DB.data.UserBiasPercentage, 0.70);
+
+      /* a higher pivot means a lower bias, and a lower bias a faster ball */
+      DB.data.UserLevelType = 2; DB.data.OutterStageOrder = 1;
+      DB.data.BiasPercentagePivot = 0;
+      v.ChangeUserBiasPercentage();
+      near('no wins yet leaves the bias at the default', DB.data.UserBiasPercentage, 0.5);
+      DB.data.BiasPercentagePivot = 8;
+      v.ChangeUserBiasPercentage();
+      near('eight wins take 0.06 off it', DB.data.UserBiasPercentage, 0.44);
+      v.PlayerScore = 0;
+      v.SetUserSpeedByBiasPercentage();
+      const slow = v.MiddleFrameInterval;
+      DB.data.BiasPercentagePivot = 40;
+      v.ChangeUserBiasPercentage();
+      v.SetUserSpeedByBiasPercentage();
+      ok('and a longer streak makes the ball faster', v.MiddleFrameInterval < slow);
+      near('forty wins take 0.3 off', DB.data.UserBiasPercentage, 0.2);
+      DB.data.BiasPercentagePivot = 60;
+      v.ChangeUserBiasPercentage();
+      near('but it never falls past the floor', DB.data.UserBiasPercentage, 0.09);
+
+      /* the pivot is capped harder as the ladder steepens */
+      DB.data.OutterStageOrder = 7; DB.data.BiasPercentagePivot = 40;
+      v.ChangeUserBiasPercentage();
+      eq('rival seven caps the streak at 15', DB.data.BiasPercentagePivot, 15);
+      DB.data.OutterStageOrder = 9; DB.data.BiasPercentagePivot = 40;
+      v.ChangeUserBiasPercentage();
+      eq('rival nine at 11', DB.data.BiasPercentagePivot, 11);
+
+      /* past rival seven the level-type curve stops being applied at all */
+      DB.data.OutterStageOrder = 8; DB.data.UserBiasPercentage = 0.5;
+      v.SetUserSpeedByBiasPercentage();
+      near('so the interval is the raw mix', v.MiddleFrameInterval, 0.017 + (0.040 - 0.017) * 0.5);
+
+      v.destroy();
+      Object.assign(DB.data, JSON.parse(keep));
+    }
+
+    /* the miss messages, and that a lost ball waits for a tap */
+    {
+      const host = document.createElement('div');
+      const v = new RivalModeSceneView(host, mgr, 1);
+      v.stageOrder = 0; v.PlayerScore = 0; v.EnemyScore = 1;
+      ok('the scene has a Tap to restart', !!v.tapToRestart);
+      eq('and it says so', v.tapToRestart.txt.textContent, 'Tap to restart');
+      ok('OnTouchPanelClick does nothing until a ball is lost', !v.OnTouchPanelClick());
+      v.isLose = true;
+      ok('and restarts once one is', v.OnTouchPanelClick());
+      ok('once only', !v.OnTouchPanelClick());
+      v.destroy();
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

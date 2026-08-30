@@ -82,6 +82,13 @@ The game's own numbers, not approximations:
   `BallTrail_From` / `_To` / `_Lose` components authored in the Unity scene;
 - the **A/B lane tables** from `Core::.ctor`, including the fact that the first
   two rivals use a reduced table where lane A3 never comes up;
+- the **adaptive difficulty** the game never tells you about: the level table's
+  frame intervals are thrown away every ball and recomputed from a running
+  measure of how well you are playing. Winning a ball raises
+  `BiasPercentagePivot`; a higher pivot means a lower bias, and a lower bias a
+  shorter frame interval — a faster ball. Every launch of the app gives five of
+  that streak back, and how many retries the *tutorial* took you picks which of
+  four curves you are on for the whole career;
 - the whole **rally coroutine** — `Core::BallTrailAnim` — transcribed state for
   state, including the 0.207 s flight compression on an A3 hit;
 - the **splash's animation curves**, decoded from the streamed clip data;
@@ -155,7 +162,7 @@ rival.js     Core (the ball engine), RivalModeModel, the crowd, the bridge
 extra.js     the tutorial, the ending, Today's GIF, the tournament panel
 modes.js     the three Impossible Test modes and their card list
 app.js       boot and the scene manager
-selftest.js  244 in-page assertions
+selftest.js  261 in-page assertions
 ```
 
 ## Dev harness
@@ -183,7 +190,7 @@ selftest.js  244 in-page assertions
 ```sh
 ./shot.sh <name> ["<query>"] [ms]    # screenshot -> shots/
 ./shot2.sh <name> "<query>" <ms>     # the same, without the freeze
-./selftest.sh                        # 244 assertions, headless
+./selftest.sh                        # 261 assertions, headless
 ./errs.sh "<query>" <ms>             # dump every uncaught error the page hit
 ```
 

@@ -38,7 +38,7 @@ copy it across; the repo copy is the one people read.
 ## 3. Verification discipline
 
 ```sh
-./selftest.sh                    # 244 assertions, headless
+./selftest.sh                    # 261 assertions, headless
 ./shot2.sh look "auto=1" 9000    # screenshot 9 s in
 ./errs.sh "goto=rival" 6000      # dump every uncaught error the page hit
 ```
@@ -93,6 +93,10 @@ explicit "ported, or accounted for" list. A future extraction that turns up a
 | `Today's <color="#FFCB39FF">GIF</color>` printed literally | ten strings carry Unity rich text (`<color>`, `<size>`, `<b>`, `<i>`) and it was never converted |
 | the Eyesight intro read as two interleaved columns | `.txt` is a flex container (that is how Unity's nine TextAnchors are done), so the `<span>` a `<color>` tag produces split the paragraph into three flex items laid out in a **row**. All text now goes into a single `.rt` child. |
 | two layered texts sat half a line apart | CSS collapses a newline that ends a block; Unity's `UI.Text` does not |
+| the ball flew at the level table's speed, not the player's | `SetFromBall` reads `middleFrameInterval` from the level, and then **throws it away**: `ChangeUserBiasPercentage` + `SetUserSpeedByBiasPercentage` recompute all three intervals from `UserBiasPercentage`, a running measure of how well you are doing. The port was using the table's raw values. |
+| the miss message read "Tapped too late!" | it is "Hit too late!", and it is the *second* message -- "missed!" comes up first in white, holds 0.35 s, and is replaced |
+| a lost ball restarted itself | it does not. The screen stays inverted, the HIT buttons are disabled outright (`HideHitBtnImmidiatly`, the first line of `LoseAnim`), and "Tap to restart" fades up over a second; `OnTouchPanelClick` 0x32BEC is what resumes. |
+| the tournament had no ending | `RivalModeEnding` carries two, and `Show_TournamentEnding` 0x2BF96 runs the other one |
 | the tournament bridge had no layout | `arrays.py` only understood `stelem` with reference elements, so every `Vector3[]` (`dup/ldc/ldelema/newobj/stobj`) and `int[]` (`ldtoken` + `RuntimeHelpers::InitializeArray`, payload at the field's **FieldRVA**) in `TestEnemyDetail` came out empty — the font sizes, number positions and dialog positions the tournament lays itself out with |
 
 Four readings I got wrong and an oracle corrected: Unity **does** serialize a

@@ -417,6 +417,8 @@ const LT = {
     for (let i = LT.list.length - 1; i >= 0; i--) if (LT.list[i].dead) LT.list.splice(i, 1);
   },
   cancelAll() { for (const t of LT.list) t.dead = true; },
+  /* LeanTween.cancel(gameObject) -- kill every tween on one node */
+  cancel(node) { for (const t of LT.list) if (t.node === node) t.dead = true; },
   lerp: (a, b, k) => a + (b - a) * k,
 
   value(from, to, dur, cb) {
@@ -428,18 +430,21 @@ const LT = {
   },
   alpha(node, to, dur) {
     const from = node.alpha;
-    return new Tween(dur, from, to, (t, k) => node.setAlpha(LT.lerp(from, to, k)));
+    const t = new Tween(dur, from, to, (t_, k) => node.setAlpha(LT.lerp(from, to, k)));
+    t.node = node; return t;
   },
   scale(node, to, dur) {
     const from = node.localScale;
     const t2 = (typeof to === 'number') ? [to, to] : to;
-    return new Tween(dur, from, t2, (t, k) =>
+    const t = new Tween(dur, from, t2, (t_, k) =>
       node.setLocalScale(LT.lerp(from[0], t2[0], k), LT.lerp(from[1], t2[1], k)));
+    t.node = node; return t;
   },
   moveLocal(node, x, y, dur) {
     const from = node.localPos;
-    return new Tween(dur, from, [x, y], (t, k) =>
+    const t = new Tween(dur, from, [x, y], (t_, k) =>
       node.setLocalPos(LT.lerp(from[0], x, k), LT.lerp(from[1], y, k)));
+    t.node = node; return t;
   },
   moveLocalX(node, x, dur) { return LT.moveLocal(node, x, node.localPos[1], dur); },
   moveLocalY(node, y, dur) { return LT.moveLocal(node, node.localPos[0], y, dur); },
