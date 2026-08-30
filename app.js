@@ -92,8 +92,10 @@ class GameMgr {
       this.tutorial = new TutorialView(this.stage, this, v);
       this.stage.insertBefore(this.tutorial.scene.root, this.settings.scene.root);
       this.tutorial.run();
-    } else {
+    } else if (qs.has('nobridge')) {
       v.Reset_EnterGame(this.db.OutterStageOrder);
+    } else {
+      v.EnterWithBridge(this.db.OutterStageOrder);
     }
   }
 
@@ -108,7 +110,9 @@ class GameMgr {
 
   onPause(paused) { if (this.view && this.view.Pause) this.view.Pause(paused); }
 
-  onMatchWon(stage) {
+  async onMatchWon(stage) {
+    /* the beaten rival says his line on the bridge before the ladder moves on */
+    if (this.view && this.view.ShowBeatenThenNext) await this.view.ShowBeatenThenNext(stage);
     this.db.OutterStageOrder = Math.min(49, stage + 1);
     this.db.numOfAttempt = 0;
     DB.save();
@@ -159,7 +163,16 @@ class GameMgr {
     if (this.settings && this.settings.hitTest(x, y)) {
       this.settings.onSettingBtnDown(this.curSceneState); return;
     }
-    if (this.settings && this.settings.IsSettingShow) return;
+    if (this.settings && this.settings.IsSettingShow) {
+      /* while paused the bridge is up: Resume closes it, Home leaves */
+      const v = this.view;
+      if (v && v.bridge) {
+        const hit = v.bridge.hitResume(x, y);
+        if (hit === 'resume') { this.settings.onSettingBtnDown(this.curSceneState); return; }
+        if (hit === 'home') { this.settings.IsSettingShow = false; this.goHome(); return; }
+      }
+      return;
+    }
     if (this.view instanceof HomeSceneView) {
       if (this.view.hitTest(x, y)) this.view.onLetsFight();
       return;
@@ -184,6 +197,30 @@ async function boot() {
 
   Audio_.load(['Hit1', 'Hit2', 'HardHit', 'Lose', 'Herray', 'blast', 'mouse_click']);
   fit();
+
+  /* Browsers will not start audio before a gesture, and the splash's click and
+     explosion are the first things the game plays -- so hold the boot behind a
+     tap.  The original has no such gate; on a phone the app's own launch is the
+     gesture. */
+  if (!qs.has('nogate')) {
+    const gate = document.createElement('div');
+    gate.id = 'gate';
+    gate.innerHTML = '<div><b>I\'m Ping Pong King</b><span>tap to start</span></div>';
+    document.body.appendChild(gate);
+    await new Promise(res => {
+      const go = () => {
+        Audio_.unlock();
+        gate.remove();
+        removeEventListener('pointerdown', go);
+        removeEventListener('keydown', go);
+        res();
+      };
+      addEventListener('pointerdown', go);
+      addEventListener('keydown', go);
+      /* the harness has no gesture to give */
+      if (qs.has('selftest') || qs.has('auto') || qs.has('tap') || qs.has('goto')) setTimeout(go, 0);
+    });
+  }
 
   const stage = $('#stage');
   const mgr = new GameMgr(stage);
@@ -222,6 +259,7 @@ async function boot() {
   }
 
   await mgr.boot();
+
 
   /* ?crowd=1 -- bring the audience up on its own, for the harness */
   if (qs.get('crowd')) {

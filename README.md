@@ -12,7 +12,10 @@ it against [`docs/SPEC.md`](docs/SPEC.md).
 ## Run it
 
 Open `index.html` in any modern browser. `file://` works, no server and no build
-step. Tap or press a key once to start (browsers block audio before a gesture).
+step. There is a **tap-to-start** screen first: browsers refuse to play audio
+before a gesture, and the very first thing the game plays is the splash's click
+and explosion. The original has no such gate — on a phone, launching the app is
+the gesture.
 
 ## What's here
 
@@ -28,9 +31,12 @@ The whole first-run experience, in order:
    "Hi Rookie" / "Wanna be our Ping Pong King?" / "Try to beat 10 of us!" /
    "Are you game for it?", and the **I'M READY** button;
 4. the **RivalMode career** — 50 rivals counted down from #50 BEST FRIEND to
-   #1 PINGPONG KING, READY / FIGHT, HIT L / HIT R, the sweet spot, WIN A POINT
-   and LOSE A POINT, the screen inverting to black on a lost ball, the crowd
-   rising and cheering on a won match, and a background colour per rival;
+   #1 PINGPONG KING, each introduced on the ladder card and each with a line
+   when you beat him ("You Win.", "You win, I'm impressed."); READY / FIGHT,
+   HIT L / HIT R in the stage's own colour, the sweet spot, WIN A POINT and
+   LOSE A POINT on flip-card score pads, the screen inverting to black on a
+   lost ball, the crowd rising on a won match, and the pause screen — which is
+   the rival ladder with PAUSED and RESUME;
 5. **Today's GIF** — the five share panels with their animated clips;
 6. the ending: **"Now You Are Ping Pong King"**, the crown, the rotating light
    and the champion's three dances.
@@ -105,13 +111,15 @@ scenes.js    the splash, the home screen, the settings overlay
 rival.js     Core (the ball engine), RivalModeModel, the crowd, RivalModeScene
 extra.js     the tutorial, the ending, Today's GIF
 app.js       boot and the scene manager
-selftest.js  117 in-page assertions
+selftest.js  144 in-page assertions
 ```
 
 ## Dev harness
 
 ```
 ?goto=home|rival|tutorial|ending|gif   jump straight to a screen
+?nogate=1       skip the tap-to-start gate
+?nobridge=1     skip the challenger card and go straight to the rally
 ?stage=N        start on career stage N (0-49)
 ?gif=N          which share panel (0-4)
 ?fresh=1        wipe the save
@@ -126,16 +134,20 @@ selftest.js  117 in-page assertions
 ```sh
 ./shot.sh <name> ["<query>"] [ms]    # screenshot -> shots/
 ./shot2.sh <name> "<query>" <ms>     # the same, without the freeze
-./selftest.sh                        # 117 assertions, headless
+./selftest.sh                        # 144 assertions, headless
 ```
 
-The self-test checks the career and group tables, the rival roster, every
-authored hit window, the sprite and atlas tables, the decoded splash curves and
-their event times, the tutorial's script, the ending's dance sequences, the five
-GIF blurbs, Unity's RectTransform maths (including the localPosition conversion
-that an edge-anchored node needs), LeanTween's ease curves, both lane tables,
-the `BallData` transitions, the relax-level path, the `Group_Extreme` bug, the
-sweet-spot boundary, and a real scored rally with both miss classifications.
+The self-test checks the career and group tables, the rival roster and the lines
+each rival says, every authored hit window, the sprite and atlas tables, the
+decoded splash curves and their event times, the tutorial's script, the ending's
+dance sequences, the five GIF blurbs, Unity's RectTransform maths (the
+localPosition conversion an edge-anchored node needs, scaling about the pivot,
+and `sizeDelta` keeping a centred rect centred), LeanTween's ease curves, both
+lane tables, the `BallData` transitions, the relax-level path, the
+`Group_Extreme` bug, the sweet-spot boundary, where the rival stands for each
+of B1/B2/B3, the per-stage HIT button sprite, the button press moving down
+rather than scaling, the ladder's fifty entries, and a real scored rally with
+both miss classifications.
 Every assertion has been negative-checked: breaking the constant it covers makes
 that assertion, and only that assertion, fail.
 

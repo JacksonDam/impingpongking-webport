@@ -37,3 +37,12 @@ html, body {
   background: rgba(0,0,0,.72); padding: 6px 9px; border-radius: 4px;
   white-space: pre; pointer-events: none;
 }
+
+/* the tap-to-start gate: browsers block audio before a gesture */
+#gate {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+  background: #ffcb39; cursor: pointer;
+}
+#gate div { text-align: center; font-family: "Oduda", "Arial Black", sans-serif; color: #161616; }
+#gate b { display: block; font-size: 34px; letter-spacing: .5px; }
+#gate span { display: block; margin-top: 14px; font-size: 15px; opacity: .55; }

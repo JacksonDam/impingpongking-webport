@@ -101,7 +101,15 @@ class TutorialView {
       c.trailSet(i);
       if (i === c.hitBackStartFrame) {
         c.IsAbleToHitBack = true;
-        if (notif) { notif.setActive(true); notif.setLocalPos(-103.6, -37.2); notif.setAlpha(1); }
+        /* the red quarter of the table lights up on the side the ball is
+           going to -- HitOnTableNotificationImage at (-103.6,-37.2) for the
+           left, mirrored for the right (TutorialStart, PC 7) */
+        if (notif) {                                 // HitOnTableNotificationImage.enabled = 1
+          notif.setActive(true);
+          notif.setEnabled(true);
+          notif.setLocalPos(side ? -103.6 : 103.6, -37.2);
+          notif.setAlpha(1);
+        }
         Audio_.play('Hit2');                        // Audios.PingPongEnemy
       }
       if (this.hitOk) break;
@@ -136,7 +144,8 @@ class TutorialView {
     /* bars in (0.8 s, easeOutBack) */
     if (this.bottom) LT.moveLocalY(this.bottom, -1155, 0.8).setEase(27);
     if (this.top) LT.moveLocalY(this.top, 1155, 0.8).setEase(27);
-    if (this.skipGroup) LT.alpha(this.skipGroup, 1, 0.2);
+    /* only the text and the two arrows fade in -- Skip Group's own Image has a
+       null sprite, so fading the group would paint a white rectangle. */
     if (!await W_(0.8)) return;
     for (const n of [this.skipA1, this.skipA2, this.skipText]) if (n) LT.alpha(n, 1, 0.2);
     if (!await W_(0.8)) return;
@@ -289,7 +298,15 @@ class EndingView {
       c.trailSet(i);
       if (i === c.hitBackStartFrame) {
         c.IsAbleToHitBack = true;
-        if (notif) { notif.setActive(true); notif.setLocalPos(-103.6, -37.2); notif.setAlpha(1); }
+        /* the red quarter of the table lights up on the side the ball is
+           going to -- HitOnTableNotificationImage at (-103.6,-37.2) for the
+           left, mirrored for the right (TutorialStart, PC 7) */
+        if (notif) {                                 // HitOnTableNotificationImage.enabled = 1
+          notif.setActive(true);
+          notif.setEnabled(true);
+          notif.setLocalPos(side ? -103.6 : 103.6, -37.2);
+          notif.setAlpha(1);
+        }
         Audio_.play('Hit2');                        // Audios.PingPongEnemy
       }
       if (this.hitOk) break;

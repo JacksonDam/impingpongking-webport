@@ -293,12 +293,15 @@ class SettingsView {
       if (this.btn) this.btn.setSize(58 * 0.75, 64 * 0.75);
       if (this.mgr.onPause) this.mgr.onPause(this.IsSettingShow);
       if (this.IsSettingShow) {
-        if (this.coach) { this.coach.setActive(true); LT.moveLocalX(this.coach, this.coachHome[0] - 900, 0.4).setEase(27); }
+        /* 0x01B4: the scene is paused and the list comes up; the referee is
+           activated and then immediately swept off by SettingBtnHide, so he
+           never actually appears -- the pause screen is the bridge. */
         if (this.list) { this.list.setActive(true); LT.moveLocalX(this.list, (this.btn ? this.btn.localPos[0] : 0) + 40, 0.5).setEase(30); }
+        if (this.coach) this.coach.setActive(false);
         this.SettingBtnHide(0.05);
+        LT.delayedCall(0.5, () => this.SettingBtnShow(0.05));
       } else {
-        if (this.coach) LT.moveLocalX(this.coach, this.coachHome[0], 0.3).setEase(26)
-          .setOnComplete(() => this.coach.setActive(false));
+        if (this.btn) this.btn.setSprite(this.cfg.PauseSprite);
         if (this.list) LT.moveLocalX(this.list, this.listHome[0] - 300, 0.3).setEase(26)
           .setOnComplete(() => this.list.setActive(false));
         this.SettingBtnShow(0.05);

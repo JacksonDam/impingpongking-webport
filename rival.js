@@ -241,7 +241,53 @@ class Core {
     }
   }
 
-  ManBMove() { if (this.onManBMove) this.onManBMove(); }
+  /* Core::ManBMove 0x21AC0.  B1 sits at (543.93, 489.1); B2 and B3 both sit at
+     (195, 489.1).  If the rival is already where the ball is going he just
+     swings; otherwise he hops there in 0.05 s on easeOutBack and swings on
+     arrival.  B3 uses the B3 swing, the others the hard or normal one. */
+  ManBMove() {
+    const swing = () => {
+      if (this.ManBNextPos === 'B3') this.ManBB3Swing();
+      else if (this.IsSwingHard) this.ManBSwingHard();
+      else this.ManBSwing();
+    };
+    if (this.ManBCurPos !== this.ManBNextPos) {
+      const x = (this.ManBNextPos === 'B1') ? 543.93 : 195;
+      if (this.manB) LT.moveLocal(this.manB, x, 489.1, 0.05).setEase(27).setOnComplete(swing);
+      else swing();
+    } else {
+      swing();
+    }
+  }
+
+  /* Core::ManBSwingHard (iterator 3) -- the same frames, faster */
+  async ManBSwingHard() {
+    const g = this.gen;
+    this.manB.setEnabled(true); this.manBB3.setEnabled(false);
+    Audio_.play('Hit2');
+    const seq = this.ManBSwingSequenceTmp;
+    for (let i = 0; i < seq.length; i++) {
+      if (g !== this.gen) return;
+      this.manB.setSprite(seq[i]);
+      if (!await this.waitP(0.023)) return;
+    }
+    this.manB.setSprite(seq[0]);
+  }
+
+  /* Core::ManBB3Swing (iterator 4) -- the B3 art on its own image */
+  async ManBB3Swing() {
+    const g = this.gen;
+    this.manB.setEnabled(false); this.manBB3.setEnabled(true);
+    Audio_.play('Hit2');
+    const seq = this.ManBB3SwingSequenceTmp;
+    for (let i = 0; i < seq.length; i++) {
+      if (g !== this.gen) return;
+      this.manBB3.setSprite(seq[i]);
+      if (!await this.waitP(CTOR.ManBSwingAnimDelay)) return;
+    }
+    this.manB.setEnabled(true); this.manBB3.setEnabled(false);
+    this.manB.setSprite(this.ManBSwingSequenceTmp[0]);
+  }
 
   /* Core::BallTrailAnim (iterator 1) -- the whole rally */
   async BallTrailAnim() {
@@ -601,6 +647,7 @@ class RivalModeSceneView {
                   .map(k => N(C[k])).filter(Boolean);
     this.BgColors = C.BgColors || ['FFCB39'];
 
+    this.bridge = new BridgeView(s, mgr);
     this.hideChrome();
     this.wire();
   }
@@ -608,7 +655,7 @@ class RivalModeSceneView {
 
   hideChrome() {
     const s = this.scene;
-    s.hide('Canvas/Bridge Group', 'Canvas/BridgeGroupDavid', 'Canvas/TournamentBridgeGroup',
+    s.hide('Canvas/Bridge Group', 'Canvas/TournamentBridgeGroup',
            'Canvas/Share Group', 'Canvas/Revive Group', 'Canvas/Preview Image',
            'Canvas/FingerTouch Image', 'Canvas/GameHackWin Image', 'Canvas/GameHackLose Image',
            'Canvas/Core/TapToRestart Text', 'Canvas/Core/HitNow Text',
@@ -663,8 +710,13 @@ class RivalModeSceneView {
     this.placeManA('A1');
   }
 
-  /* RivalModeScene::ShowHitBtn 0x33F0C -- the HIT L / HIT R prompts */
+  /* RivalModeScene::ShowHitBtn 0x34B68.  The buttons take
+     HitBtnSprites[OutterStageOrder % 5], so they match the stage's background
+     colour -- five buttons for the five backgrounds. */
   ShowHitBtn(alpha) {
+    const spr = (this.cfg.HitBtnSprites || [])[this.stageOrder % 5];
+    if (spr) { if (this.hitL) this.hitL.setSprite(spr); if (this.hitR) this.hitR.setSprite(spr); }
+    for (const n of [this.hitL, this.hitR, this.hitLText, this.hitRText]) if (n) n.setEnabled(true);
     for (const n of [this.hitL, this.hitR]) if (n) LT.alpha(n, alpha, 0.5).setEase(14);
     for (const n of [this.hitLShadow, this.hitRShadow]) if (n) LT.alpha(n, 0.2 * alpha, 0.5).setEase(15);
     for (const n of [this.hitLText, this.hitRText]) if (n) LT.alpha(n, alpha, 0.5).setEase(14);
@@ -673,16 +725,50 @@ class RivalModeSceneView {
     for (const n of [this.hitL, this.hitR, this.hitLShadow, this.hitRShadow,
                      this.hitLText, this.hitRText]) if (n) LT.alpha(n, 0, 0.3);
   }
-  btnDown(left) {                                    // LeftBtnDownAnim 0x33EA0
+
+  /* LeftBtnDownAnim 0x34F1C / RightBtnDownAnim 0x34F74: the button drops 30 px
+     over 0.05 s and its shadow goes out -- it is pressed into the page, not
+     scaled.  LeftBtnUpAnim 0x34FCB puts it back at (-17.5,-742). */
+  btnDown(left) {
     const n = left ? this.hitL : this.hitR;
+    const sh = left ? this.hitLShadow : this.hitRShadow;
     if (!n) return;
-    LT.scale(n, 0.92, 0.06).setEase(15);
-    LT.delayedCall(0.06, () => LT.scale(n, 1, 0.12).setEase(27));
+    if (this._btnTween && this._btnTween[left ? 0 : 1]) this._btnTween[left ? 0 : 1].cancel();
+    const t = LT.moveLocalY(n, n.localPos[1] - 30, 0.05);
+    this._btnTween = this._btnTween || [];
+    this._btnTween[left ? 0 : 1] = t;
+    if (sh) sh.setEnabled(false);
+    LT.delayedCall(0.12, () => this.btnUp(left));
+  }
+  btnUp(left) {
+    const n = left ? this.hitL : this.hitR;
+    const sh = left ? this.hitLShadow : this.hitRShadow;
+    if (this._btnTween && this._btnTween[left ? 0 : 1]) this._btnTween[left ? 0 : 1].cancel();
+    if (sh) sh.setEnabled(true);
+    if (n) n.setLocalPos(left ? -17.5 : 17.5, -742);
   }
 
   /* three balls win a match for the first five rivals, five after that --
      the rule alerts Reset_EnterGame raises say exactly that */
   get matchGoal() { return this.stageOrder > 4 ? 5 : 3; }
+
+  /* the challenger card: TestBridge::BridgeShowWhenEnterGame, then the match */
+  async EnterWithBridge(stageOrder) {
+    this.stageOrder = stageOrder;
+    this.TouchBlockEnable(true);
+    await this.bridge.ShowWhenEnterGame(stageOrder, this.BgColors[stageOrder % 5]);
+    this.bridge.Hide();
+    await wait(300);
+    this.Reset_EnterGame(stageOrder);
+  }
+
+  /* the beaten rival's line, then on to the next challenger */
+  async ShowBeatenThenNext(stageOrder) {
+    await this.bridge.ShowWhenEnterGame(stageOrder, this.BgColors[stageOrder % 5]);
+    await this.bridge.ShowBeaten(stageOrder);
+    this.bridge.Hide();
+    await wait(400);
+  }
 
   /* RivalModeScene::Reset_EnterGame 0x34178 */
   Reset_EnterGame(stageOrder) {
@@ -769,7 +855,6 @@ class RivalModeSceneView {
     c.Touch_ManB_Table_Delegate = () => this.Touch_ManB_Table();
     c.onRallyEnd = () => this.onRallyEnd();
     c.onReadyFight = () => this.readyFight();
-    c.onManBMove = () => this.ManBMove();
   }
 
   /* READY / FIGHT -- <BallTrailAnim>c__Iterator1 <>m__0 .. <>m__8, 0x23690 on.
@@ -916,15 +1001,6 @@ class RivalModeSceneView {
      isHitSweetSpot test apply the same 1.1 */
   Touch_ManB_Table() { this.core.ToBallTrailAnimDelay = this.model.middleFrameInterval * 1.1; }
 
-  /* the opponent hops between B1/B2/B3 */
-  ManBMove() {
-    const c = this.core;
-    if (!c.manB) return;
-    const X = { B1: 543.93, B2: 180, B3: 900 };
-    const x = X[c.ManBNextPos] !== undefined ? X[c.ManBNextPos] : 543.93;
-    LT.moveLocal(c.manB, x, c.manB.localPos[1], 0.18).setEase(15);
-  }
-
   /* RivalModeScene::Lose 0x30E2C */
   Lose() {
     this.EnemyScore++;
@@ -935,6 +1011,39 @@ class RivalModeSceneView {
   updateScore() {
     if (this.playerScoreText) this.playerScoreText.setText(String(this.PlayerScore));
     if (this.enemyScoreText) this.enemyScoreText.setText(String(this.EnemyScore));
+  }
+
+  /* RivalModeScene/<PlayerScorePadFlip>c__Iterator4 (and its Enemy twin): the
+     pad folds shut over 0.12 s on easeInSine, the number changes behind it, and
+     it unfolds over 0.12 s on easeOutSine -- a flip-card. */
+  async ScorePadFlip(which) {
+    const P = 'Canvas/Top Group/' + (which === 'player'
+      ? 'PlayerScorePad Group' : 'EnemyScorePadTotal Group');
+    const longG = this.scene.n(P + (which === 'player' ? '/PlayerScoreLong Group' : '/EnemyScoreLong Group'));
+    const topG = this.scene.n(P + (which === 'player' ? '/PlayerScoreTop Group' : '/EnemyScoreTop Group'));
+    const botG = this.scene.n(P + (which === 'player' ? '/PlayerScoreBottom Group' : '/EnemyScoreBottom Group'));
+    const total = which === 'player' ? this.playerScoreText : this.enemyScoreText;
+    const score = which === 'player' ? this.PlayerScore : this.EnemyScore;
+    const topT = this.scene.n(P + (which === 'player'
+      ? '/PlayerScoreTop Group/PlayerScorePad Image (2)/PlayerScore Text'
+      : '/EnemyScoreTop Group/PlayerScorePad Image (2)/PlayerScore Text'));
+    const botT = this.scene.n(P + (which === 'player'
+      ? '/PlayerScoreBottom Group/PlayerScorePad Image (2)/PlayerScore Text'
+      : '/EnemyScoreBottom Group/PlayerScorePad Image (2)/PlayerScore Text'));
+    if (!longG) { if (total) total.setText(String(score)); return; }
+    if (topG) topG.setActive(true);
+    if (botG) botG.setActive(true);
+    if (botT) botT.setText(String(score - 1));
+    if (topT) topT.setText(String(score));
+    await wait(16);
+    LT.scale(longG, [1, 0], 0.12).setEase(14);
+    await wait(120);
+    if (total) total.setText(String(score));
+    LT.scale(longG, [1, 1], 0.12).setEase(15);
+    await wait(140);
+    longG.setLocalScale(1, 1);
+    if (topG) topG.setActive(false);
+    if (botG) botG.setActive(false);
   }
   updateRemain() {
     const c = this.core;
@@ -960,7 +1069,7 @@ class RivalModeSceneView {
     if (c.manAWinLose) { c.manAWinLose.setSprite(c.cfg.NormalWinSprite); }
     const matchWon = this.PlayerScore >= this.matchGoal;
     this.banner(matchWon ? 'WIN A MATCH' : 'WIN A POINT');
-    this.updateScore();
+    this.ScorePadFlip('player');
     if (this.playerPad) LT.scale(this.playerPad, 1.2, matchWon ? 0.6 : 0.1)
       .setEase(matchWon ? 30 : 1).setLoopPingPong(matchWon ? 0 : 1);
     if (matchWon) this.audiance.Show(0);
@@ -981,7 +1090,7 @@ class RivalModeSceneView {
     for (const n of [this.playerPad, this.enemyPad]) if (n) n.setColor([1, 1, 1, 1]);
     for (const n of [this.playerScoreText, this.enemyScoreText, this.dotText])
       if (n) n.setColor([1, 1, 1, 1]);
-    this.updateScore();
+    this.ScorePadFlip('enemy');
     const matchLost = this.EnemyScore >= this.matchGoal;
     if (this.winLoseText) this.winLoseText.setColor([1, 1, 1, 1]);
     this.banner(matchLost ? 'LOSE A MATCH' : 'LOSE A POINT');
@@ -1076,7 +1185,19 @@ class RivalModeSceneView {
     }
   }
 
-  Pause(v) { this.core.Pause(v); this.audiance.Pause(v); }
+  /* RivalModeScene::Pause 0x35048 -- the pause screen IS the bridge, and the
+     HIT buttons and score pads go away while it is up. */
+  Pause(v) {
+    this.isGamePause = v;
+    this.core.Pause(v);
+    this.audiance.Pause(v);
+    if (v) this.bridge.ShowPause(this.stageOrder, this.BgColors[this.stageOrder % 5]);
+    else this.bridge.Hide();
+    for (const n of [this.hitL, this.hitR, this.hitLShadow, this.hitRShadow,
+                     this.hitLText, this.hitRText, this.playerPad, this.enemyPad,
+                     this.playerScoreText, this.enemyScoreText, this.dotText])
+      if (n) n.setActive(!v);
+  }
 
   wire() {
     this.onPointer = (x, y) => {
@@ -1086,6 +1207,264 @@ class RivalModeSceneView {
   }
 }
 
-Object.assign(window, { Core, RivalModeModel, Audiance, RivalModeSceneView,
+
+/* ============================================================== TestBridge
+ * The rival ladder (`BridgeGroupDavid`).  It is three screens in one: the
+ * challenger card before a match, the pause overlay, and the "beaten" card
+ * where the rival says his line.  RivalModeScene::Pause 0x35048 activates it,
+ * so this is also what a paused rally looks like. */
+class BridgeView {
+  constructor(scene, mgr) {
+    this.scene = scene; this.mgr = mgr;
+    this.cfg = scene.comp('Canvas/BridgeGroupDavid', 'TestBridge') || {};
+    this.roster = (G.data.arrays && G.data.arrays.TestEnemyDetail) || {};
+    const N = r => (r && r.node) ? scene.n(r.node) : null;
+    this.group = scene.n('Canvas/BridgeGroupDavid');
+    this.moving = N(this.cfg.BridgeMovingGroup);
+    this.left = N(this.cfg.LeftEnemyImage);
+    this.middle = N(this.cfg.MiddleEnemyImage);
+    this.right = N(this.cfg.RightEnemyImage);
+    this.rightRight = N(this.cfg.RightRightEnemyImage);
+    this.bg = N(this.cfg.BgImage);
+    this.nameText = N(this.cfg.TestNameText);
+    this.numberText = N(this.cfg.TestNumberText);
+    this.dialog = N(this.cfg.MiddleEnemyDialogImage);
+    this.dialogTail = N(this.cfg.MiddleEnemyDialogTailImage);
+    this.dialogText = N(this.cfg.MiddleEnemyDialogText);
+    this.pauseText = N(this.cfg.PauseText);
+    this.resume = N(this.cfg.ResumeBtnImage);
+    this.retry = N(this.cfg.BridgeRetryBtn);
+    this.homeGroup = N(this.cfg.HomeBtnGroup);
+    this.scroll = N(this.cfg.TestBridgeScrollRectGroup);
+    this.total = this.cfg.totalEnemyNum || 50;
+    this.sprites = this.cfg.TestBridgeSprites || [];
+    this.unknown = this.cfg.BridgeUnknowSprites || [];
+    this.content = scene.n('Canvas/BridgeGroupDavid/BridgeScrollRect/Viewport/ScrollContent');
+    this.entry0 = scene.n('Canvas/BridgeGroupDavid/BridgeScrollRect/Viewport/ScrollContent/Enemy1 Image');
+    this.ladder = [];
+    this.Init();
+    if (this.group) this.group.setActive(false);
+    if (this.scroll) this.scroll.setActive(false);
+  }
+
+  /* TestBridge::Init 0x15AC0 -- the scrollable ladder of every rival, 650
+     apart, each at ImageVec (0.4) scale, with a Defeated stamp that is turned
+     on for the ones already beaten. */
+  Init() {
+    if (!this.content || !this.entry0) return;
+    const T = this.total, STEP = 650;
+    this.content.setSize((T - 1 + 4) * STEP, H);
+    this.content.setLocalPos(((T - 1 + 4) * STEP) / 2 - 325, 0);
+    const x0 = -((Math.trunc(T / 2)) - 0.5) * STEP;
+    const home = this.entry0.localPos;
+    this.entry0.setLocalPos(x0, home[1]);
+    this.ladder = [this.entry0];
+    const stampSrc = this.entry0.el.querySelector('.n');
+    for (let i = 1; i < T; i++) {
+      const el = this.entry0.el.cloneNode(true);
+      this.entry0.el.parentNode.appendChild(el);
+      const n = new Node(this.scene, 'ladder' + i, this.entry0.node, el,
+                         { ...this.entry0.rect }, this.entry0.parent);
+      n.img = el.querySelector(':scope > .img');
+      n.pos = this.entry0.pos.slice();
+      n.tint = [1, 1, 1, 1];
+      n.setLocalPos(x0 + STEP * i, home[1]);
+      n.setLocalScale(0.4, 0.4);
+      this.ladder.push(n);
+    }
+    this.entry0.setLocalScale(0.4, 0.4);
+    for (let i = 0; i < T; i++) {
+      const n = this.ladder[i];
+      n.setSprite(this.sprites[((T - i) % 10 + 10) % 10]);
+      n.setEnabled(true);
+      const stamp = n.el.querySelector('.n');          // the Defeated stamp
+      if (stamp) stamp.style.display = 'none';
+      n._stamp = stamp;
+    }
+  }
+
+  /* the stamps for every rival already beaten */
+  markDefeated(stage) {
+    for (let i = 0; i < this.ladder.length; i++) {
+      const n = this.ladder[i];
+      if (!n._stamp) continue;
+      n._stamp.style.display = (i < stage) ? '' : 'none';
+    }
+  }
+
+  /* TestBridge::MoveToCurRival 0x16608 */
+  MoveToCurRival(stage, instant) {
+    if (!this.content || !this.ladder.length) return;
+    const target = this.ladder[Math.min(stage, this.ladder.length - 1)];
+    if (!target) return;
+    const x = -target.localPos[0];
+    if (instant) this.content.setLocalPos(x, this.content.localPos[1]);
+    else LT.moveLocalX(this.content, x, 0.15 * Math.abs(stage - (this.centerIndex | 0))).setEase(16);
+    this.centerIndex = stage;
+  }
+
+  hex(h) { const v = p => parseInt(h.substr(p, 2), 16) / 255;
+           return [v(0), v(2), v(4), h.length >= 8 ? v(6) : 1]; }
+
+  /* TestBridge::SetUpBridge 0x16120 */
+  SetUpBridge(stage) {
+    const S = this.sprites, U = this.unknown, T = this.total;
+    const pick = (arr, i) => arr[((i % 10) + 10) % 10];
+    if (this.left) {
+      if (stage === 0) this.left.setEnabled(false);
+      else { this.left.setEnabled(true); this.left.setSprite(pick(S, T - (stage - 1)));
+             this.left.setNativeSize(); this.left.setLocalScale(0.4, 0.4); }
+    }
+    if (this.right) {
+      if (stage === T - 1) this.right.setEnabled(false);
+      else { this.right.setEnabled(true); this.right.setSprite(pick(S, T - (stage + 1)));
+             this.right.setNativeSize(); this.right.setLocalScale(0.4, 0.4); }
+    }
+    if (this.rightRight) {
+      if (stage >= T - 2) this.rightRight.setEnabled(false);
+      else { this.rightRight.setEnabled(true); this.rightRight.setSprite(pick(U, T - (stage + 2)));
+             this.rightRight.setNativeSize(); this.rightRight.setLocalScale(0.4, 0.4); }
+    }
+    if (this.middle) {
+      this.middle.setEnabled(true);
+      this.middle.setSprite(pick(S, T - stage));
+      this.middle.setNativeSize();
+      this.middle.setLocalScale(1, 1);
+    }
+    const n = T - stage;
+    if (this.numberText) this.numberText.setText(String(n).padStart(2, '0'));
+    if (this.nameText) this.nameText.setText((this.roster.RivalModeEnemyName || [])[n] || '');
+  }
+
+  hideAll() {
+    for (const n of [this.dialog, this.dialogTail, this.dialogText]) if (n) n.setAlpha(0);
+    if (this.pauseText) { this.pauseText.setAlpha(0); this.pauseText.setEnabled(false); }
+    for (const n of [this.resume, this.retry, this.homeGroup]) if (n) n.setActive(false);
+  }
+
+  /* TestBridge::BridgeShowWhenEnterGame -- the challenger card.  The three
+     portraits come in from +500 x and the middle one starts at 0.65 scale. */
+  async ShowWhenEnterGame(stage, bgHex) {
+    if (!this.group) return;
+    this.group.setActive(true);
+    this.hideAll();
+    if (this.scroll) this.scroll.setActive(false);
+    if (this.moving) this.moving.setActive(true);
+    if (this.numberText) this.numberText.setFontSize(178);
+    this.SetUpBridge(stage);
+    const homes = [];
+    for (const n of [this.left, this.middle, this.right, this.rightRight]) {
+      if (!n) { homes.push(null); continue; }
+      const p = n.localPos.slice();
+      homes.push(p);
+      n.setLocalPos(p[0] + 500, p[1]);
+      n.setAlpha(0);
+    }
+    if (this.middle) this.middle.setLocalScale(0.65, 0.65);
+    if (this.bg) { this.bg.setColor(this.hex(bgHex)); this.bg.setAlpha(0); LT.alpha(this.bg, 1, 0.1); }
+    if (this.moving) this.moving.setLocalPos(0, 0);
+    for (const n of [this.left, this.middle, this.right, this.rightRight]) if (n) LT.alpha(n, 1, 0.1);
+    if (this.nameText) { this.nameText.setColor(this.hex('161616FF')); this.nameText.setAlpha(0); LT.alpha(this.nameText, 1, 0.1); }
+    if (this.numberText) { this.numberText.setColor(this.hex('161616FF')); this.numberText.setAlpha(0); LT.alpha(this.numberText, 1, 0.1); }
+    /* <BridgeShowWhenEnterGame>c__AnonStorey6::<>m__0 at 0.2 s slides them home
+       and grows the challenger to full size */
+    LT.delayedCall(0.2, () => {
+      const t = [this.left, this.middle, this.right, this.rightRight];
+      t.forEach((n, i) => { if (n && homes[i]) LT.moveLocal(n, homes[i][0], homes[i][1], 0.35).setEase(27); });
+      if (this.middle) LT.scale(this.middle, 1, 0.35).setEase(27);
+    });
+    await wait(1400);
+  }
+
+  /* TestBridge::ChangeMiddleEnemyToLoseSprite 0x163B8 -- the beaten rival drops
+     his head and says his line. */
+  async ShowBeaten(stage) {
+    if (!this.middle) return;
+    this.middle.setSprite(this.cfg.BridgeEnemyLoseSprite);
+    this.middle.setNativeSize();
+    const y = this.middle.localPos[1];
+    LT.moveLocalY(this.middle, y - 30, 0.07).setLoopPingPong(1);
+    const words = this.roster.RivalModeEnemyWordsWhenLose || [];
+    const n = this.total - stage;
+    if (this.dialogText) this.dialogText.setText(words[((n % 10) + 10) % 10] || '');
+    if (this.dialogTail) this.dialogTail.setLocalPos(96, -19 + 603);
+    await wait(300);                                   // <>m__0
+    if (this.dialog) { this.dialog.setColor([1, 1, 1, 0]); LT.alpha(this.dialog, 1, 0.1); }
+    if (this.dialogTail) { this.dialogTail.setColor([1, 1, 1, 0]); LT.alpha(this.dialogTail, 1, 0.1); }
+    if (this.dialogText) { this.dialogText.setColor([0, 0, 0, 0]); LT.alpha(this.dialogText, 1, 0.1); }
+    await wait(1900);
+  }
+
+  /* TestBridge/<PauseAnim>c__Iterator4 -- the pause overlay */
+  ShowPause(stage, bgHex) {
+    if (!this.group) return;
+    this.group.setActive(true);
+    if (this.scroll) this.scroll.setActive(true);
+    /* the pause screen uses the ladder, not the three-portrait card */
+    if (this.moving) this.moving.setActive(false);
+    this.markDefeated(stage);
+    /* only the current rival and its two neighbours are drawn; the current one
+       stands full size at y=-161, the others at 0.4 scale and y=-214 */
+    for (let i = 0; i < this.ladder.length; i++) {
+      const n = this.ladder[i];
+      const near = (i === stage || i === stage + 1 || i === stage - 1);
+      n.el.style.display = near ? '' : 'none';
+      if (!near) continue;
+      /* PauseAnim: the current rival stands full size at y=-214, the two
+         neighbours sit at 0.4 scale and y=-161 */
+      if (i === stage) { n.setLocalScale(1, 1); n.setLocalPos(n.localPos[0], -214); }
+      else { n.setLocalScale(0.4, 0.4); n.setLocalPos(n.localPos[0], -161); }
+    }
+    this.MoveToCurRival(stage, true);
+    if (this.retry) this.retry.setActive(false);
+    if (this.bg) { const c = this.hex(bgHex); c[3] = 0.95; this.bg.setColor(c); }
+    for (const n of [this.dialog, this.dialogTail, this.dialogText]) if (n) n.setEnabled(false);
+    const num = this.total - stage;
+    if (this.numberText) {
+      this.numberText.setText(String(num).padStart(2, '0'));
+      this.numberText.setFontSize(300);
+      this.numberText.setColor(this.hex('FFFFFF00'));
+      LT.alpha(this.numberText, 0.65, 0.35);          // fades to 0.65, not 1
+    }
+    if (this.nameText) this.nameText.setText((this.roster.RivalModeEnemyName || [])[num] || '');
+    if (this.homeGroup) {
+      this.homeGroup.setActive(true);
+      this.homeGroup.setLocalScale(0, 0);
+      LT.scale(this.homeGroup, 1, 0.3).setEase(27);
+    }
+    if (this.resume) {
+      this.resume.setActive(true);
+      this.resume.setLocalScale(0, 0);
+      LT.scale(this.resume, 1, 0.3).setEase(27);
+    }
+    for (const n of [this.middle, this.left, this.right, this.rightRight]) if (n) n.setAlpha(1);
+    if (this.nameText) { this.nameText.setColor(this.hex('16161600')); LT.alpha(this.nameText, 1, 0.3); }
+    if (this.pauseText) {                              // PauseText.enabled = 1
+      this.pauseText.setEnabled(true);
+      this.pauseText.setColor(this.hex('16161600'));
+      LT.alpha(this.pauseText, 1, 0.35);
+    }
+  }
+
+  /* TestBridge::BridgeHide 0x16698 */
+  Hide() {
+    for (const n of [this.bg, this.middle, this.left, this.right, this.rightRight,
+                     this.nameText, this.numberText, this.pauseText, this.dialog,
+                     this.dialogTail, this.dialogText, this.resume])
+      if (n) LT.alpha(n, 0, 0.25);
+    LT.delayedCall(0.3, () => { if (this.group) this.group.setActive(false); });
+  }
+
+  hitResume(x, y) {
+    for (const n of [this.resume, this.homeGroup]) {
+      if (!n || !n.active) continue;
+      const r = n.el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return n === this.resume ? 'resume' : 'home';
+    }
+    return null;
+  }
+}
+
+Object.assign(window, { Core, RivalModeModel, Audiance, RivalModeSceneView, BridgeView,
                         SeqState, Miss, MovementType, SpeedType, CTOR,
                         STAND_NORMAL, STAND_GALAXY });

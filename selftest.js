@@ -273,6 +273,98 @@
       c.StopRun();
     }
 
+    /* ------------------------------------------- the audit fixes, pinned */
+    if (V instanceof RivalModeSceneView) {
+      const c = V.core;
+
+      /* Core::ManBMove 0x21AC0: B1 stands at 543.93, B2 AND B3 both at 195 */
+      c.ManBCurPos = 'B1'; c.ManBNextPos = 'B2';
+      c.manB.setLocalPos(543.93, 489.1);
+      c.ManBMove();
+      await new Promise(r => setTimeout(r, 140));
+      near('rival hops to B2 at x=195', c.manB.localPos[0], 195, 1);
+      c.ManBCurPos = 'B2'; c.ManBNextPos = 'B3';
+      c.ManBMove();
+      await new Promise(r => setTimeout(r, 140));
+      near('B3 shares B2\'s spot', c.manB.localPos[0], 195, 1);
+      c.ManBCurPos = 'B3'; c.ManBNextPos = 'B1';
+      c.ManBMove();
+      await new Promise(r => setTimeout(r, 140));
+      near('rival returns to B1 at x=543.93', c.manB.localPos[0], 543.93, 1);
+      c.StopRun();
+
+      /* ShowHitBtn 0x34B68: the buttons take the stage's own sprite */
+      const spr = V.cfg.HitBtnSprites;
+      V.stageOrder = 2; V.ShowHitBtn(1);
+      eq('HIT button matches the stage colour', V.hitL._spr, spr[2]);
+      V.stageOrder = 7; V.ShowHitBtn(1);
+      eq('HIT button cycles every five stages', V.hitL._spr, spr[2]);
+      V.stageOrder = 3; V.ShowHitBtn(1);
+      eq('stage 3 uses its own button', V.hitL._spr, spr[3]);
+      V.stageOrder = 0;
+
+      /* LeftBtnDownAnim 0x34F1C: the button drops 30 px, it is not scaled */
+      V.btnUp(true);
+      const y0 = V.hitL.localPos[1];
+      const s0 = V.hitL.localScale[1];
+      V.btnDown(true);
+      await new Promise(r => setTimeout(r, 90));
+      near('pressing HIT L moves it down 30', V.hitL.localPos[1], y0 - 30, 2);
+      near('pressing HIT L does not scale it', V.hitL.localScale[1], s0, 1e-6);
+      V.btnUp(true);
+      near('releasing puts it back at -742', V.hitL.localPos[1], -742, 0.01);
+      near('releasing puts it back at x=-17.5', V.hitL.localPos[0], -17.5, 0.01);
+
+      /* the ladder TestBridge::Init builds */
+      eq('the rival ladder has one entry per rival', V.bridge.ladder.length, 50);
+      eq('ladder entries are 650 apart',
+         Math.round(V.bridge.ladder[1].localPos[0] - V.bridge.ladder[0].localPos[0]), 650);
+      eq('ladder sprite for the first rival', V.bridge.ladder[0]._spr,
+         V.bridge.sprites[(50 - 0) % 10]);
+
+      /* the line the beaten rival says */
+      const words = g.arrays.TestEnemyDetail.RivalModeEnemyWordsWhenLose;
+      eq('rival #50 says You Win.', words[(50 - 0) % 10], 'You Win.');
+      /* the line is indexed by (totalEnemyNum - stage) % 10, so stage 48 --
+         rival #2 -- draws index 2 */
+      eq('rival #2 is impressed', words[(50 - 48) % 10], "You win, I'm impressed.");
+      eq('rival #42 is good-natured', words[(50 - 42) % 10], 'You are good');
+
+      /* sizeDelta keeps a centre-pivoted node centred -- the pause glyph bug */
+      const btn = mgr.settings.btn;
+      btn.setSize(58, 64);                              // the menu glyph's size
+      const before = [btn.rect.x + btn.rect.w / 2, btn.rect.y + btn.rect.h / 2];
+      ok('the button starts at its full size', Math.round(btn.rect.w) === 58, btn.rect.w);
+      btn.setSize(58 * 0.75, 64 * 0.75);                // the pause glyph's size
+      ok('the button really did shrink', Math.round(btn.rect.w) === 44, btn.rect.w);
+      near('shrinking a centred rect keeps its centre x', btn.rect.x + btn.rect.w / 2, before[0], 0.01);
+      near('shrinking a centred rect keeps its centre y', btn.rect.y + btn.rect.h / 2, before[1], 0.01);
+      btn.setSize(58, 64);
+
+      /* Unity scales about the pivot, and these rivals pivot at their feet */
+      const mid = V.bridge.middle;
+      eq('the rival pivots near its feet', Math.round(mid.node.rect.pivot[1] * 1000), 33);
+      mid.setLocalScale(0.4, 0.4);
+      eq('scale happens about the pivot',
+         mid.el.style.transformOrigin, '50% 96.69%');
+      mid.setLocalScale(1, 1);
+
+      /* a null-sprite Image is a colour quad; giving it a sprite must clear it */
+      const probe2 = V.scene.n('Canvas/BridgeGroupDavid/BridgeScrollRect/Viewport/ScrollContent/Enemy1 Image');
+      ok('a sprite clears the quad fill it replaced',
+         probe2 && probe2.img && probe2.img.style.backgroundColor === '',
+         probe2 && probe2.img && probe2.img.style.backgroundColor);
+    }
+
+    /* the tutorial's red table-quarter light exists and ships disabled */
+    const notif = g.scenes.RivalModeScene['Canvas/Core/Table Image/HitOnTableNotification Image'];
+    eq('the table light is the red quarter', notif.image.sprite, 'Tutorial-Table light');
+    eq('the table light ships disabled', notif.image.enabled, false);
+    eq('PAUSED ships disabled', g.scenes.RivalModeScene['Canvas/BridgeGroupDavid/Pause Text'].text.enabled, false);
+    /* the ScrollRect's own Image is an input target, never drawn */
+    eq('the scroll rect image is not drawn',
+       g.scenes.RivalModeScene['Canvas/BridgeGroupDavid/BridgeScrollRect'].image.enabled, false);
+
     /* every To/From trail the standing tables can name must exist */
     ok('every To trail exists', ['A1', 'A2', 'A3'].every(a => ['B1', 'B2', 'B3'].every(b =>
        !(STAND_GALAXY[a] && (STAND_GALAXY[a].L === b || STAND_GALAXY[a].R === b)) ||

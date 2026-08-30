@@ -72,6 +72,13 @@ assertions in this suite passed vacuously until that was done:
 | nothing animated in a screenshot | `requestAnimationFrame` does not advance under `--virtual-time-budget`; the clock needs a timer too |
 | crash on leaving a scene | `LT.cancelAll()` runs inside a tween's own callback, so the ticker must step a snapshot |
 | splash tracks mixed together | a Transform binding is 3–4 curve slots, not 1, and its attribute is a small enum rather than a CRC |
+| the rival walked off screen | ManBMove sends B2 **and** B3 to x=195; I had invented 180/900 |
+| the ball seemed to vanish | it did not — the rival had walked off screen and the ball was flying to him |
+| a blurry blob on pause | the referee is activated and immediately swept off by SettingBtnHide; the pause screen is the bridge |
+| bridge rivals stacked on each other | Unity scales about the pivot, and they pivot at their feet (y=0.033) |
+| white rectangles on the bridge | `enabled: false` Images that only code turns on, and null-sprite quads not cleared when a sprite arrives |
+| the pause glyph sat left of its circle | `sizeDelta` must re-resolve the rect, not just resize the box |
+| no audio at all until the first click | browsers block audio before a gesture; the port needs a tap-to-start gate the original does not |
 
 Three readings I got wrong and an oracle corrected: Unity **does** serialize a
 public `[Obsolete]` field (`EventTrigger.delegates`); the standing-table lookup
@@ -85,8 +92,6 @@ Fair game to tighten. Everything else carries a source; these don't:
 
 - **ManA's lane change.** A jump plus a 50 ms delay before the swing; the
   original tweens it over 0.05 s on `setEase(27)`.
-- **ManB's hop between B1/B2/B3.** The x positions (543.93 / 180 / 900) are my
-  reading of where the art sits, not values from `Core::ManBMove`.
 - **The score pads.** Position and art are the scene's; showing the resting face
   rather than running `ScorePad`'s flip is mine.
 - **Which nodes start visible.** The scenes ship most panels present and fade
@@ -97,9 +102,11 @@ Fair game to tighten. Everything else carries a source; these don't:
 - **The tutorial's little mission** — the three-ball drill between the two
   taught hits — is left out; the rest of `TutorialStart`'s beats are the real
   waits.
-- **The match flow between rivals.** The port goes straight to the next rival
-  (via the share panel every third win); the original runs the rival bridge, the
-  revive offer and a result page.
+- **The match flow between rivals.** The port shows the bridge card and the
+  beaten rival's line, then goes on (via the share panel every third win); the
+  original also offers Revive and a result page.
+- **The ladder does not drag.** `TestBridge::OnDragEnd` and `ScrollingEffect`
+  are not ported; the ladder is built and centred but not scrollable by touch.
 
 ## 6. Ordered list of what to port next
 

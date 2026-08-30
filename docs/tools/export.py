@@ -116,6 +116,13 @@ class Ex:
                                  'enabled': cc['enabled'],
                                  'hOverflow': cc.get('horizontalOverflow', 0),
                                  'vOverflow': cc.get('verticalOverflow', 0)}
+                elif k == 'UnityEngine.UI.Mask':
+                    # a Mask's Image is the stencil shape, not art: Unity only
+                    # draws it when m_ShowMaskGraphic is set
+                    d = cc.get('data') or {}
+                    n['mask'] = {'show': bool(d.get('m_ShowMaskGraphic', True))}
+                elif k == 'UnityEngine.UI.RectMask2D':
+                    n['rectMask'] = True
                 elif k in KEEP and 'data' in cc:
                     n.setdefault('comp', {})[k] = self.resolve(src, cc['data'])
             out[rel] = n

@@ -81,6 +81,12 @@ function drawSprite(el, name, rectW, rectH, preserveAspect) {
 function applyTint(el, c) {
   if (!c) return;
   const [r, g, b] = c;
+  /* clear any mask left by a previous coloured tint, or the sprite stays
+     invisible once the tint goes back to white */
+  if (el.style.maskImage || el.style.webkitMaskImage) {
+    el.style.webkitMaskImage = el.style.maskImage = '';
+    el.style.backgroundColor = '';
+  }
   if (r === 1 && g === 1 && b === 1) { el.style.filter = ''; return; }
   if (r === g && g === b) { el.style.filter = `brightness(${r})`; return; }
   const img = el.style.backgroundImage;
@@ -115,8 +121,7 @@ class Node {
   get active() { return this.el.style.display !== 'none'; }
 
   setEnabled(v) {                                   // Image.enabled / Text.enabled
-    const t = this.img || this.txt;
-    if (t) t.style.visibility = v ? '' : 'hidden';
+    for (const t of [this.img, this.txt]) if (t) t.style.visibility = v ? '' : 'hidden';
     return this;
   }
 
@@ -130,6 +135,9 @@ class Node {
     this._spr = name; this._pa = preserveAspect;
     if (!name) { this.img.style.display = 'none'; return this; }
     this.img.style.display = '';
+    /* a null-sprite Image was painted as a solid quad; clear that fill or the
+       sprite lands on top of a white box */
+    this.img.style.backgroundColor = '';
     drawSprite(this.img, name, this.rect.w, this.rect.h,
                preserveAspect !== undefined ? preserveAspect
                  : (this.node.image && this.node.image.preserveAspect));
@@ -206,18 +214,44 @@ class Node {
 
   setRotation(deg) { this.rot = deg; this._applyTransform(); return this; }
 
+  /* Unity scales and rotates a RectTransform about its PIVOT, not its centre.
+     These rivals pivot at y = 0.033 -- near their feet -- so scaling them about
+     the middle lifts them hundreds of pixels off their baseline. */
   _applyTransform() {
     const s = this.scale, r = this.rot || 0;
+    const p = this.driven ? [0.5, 0.5] : this.node.rect.pivot;
+    this.el.style.transformOrigin = `${p[0] * 100}% ${(1 - p[1]) * 100}%`;
     const parts = [];
     if (r) parts.push(`rotate(${r}deg)`);
     if (s[0] !== 1 || s[1] !== 1) parts.push(`scale(${s[0]},${s[1]})`);
     this.el.style.transform = parts.join(' ');
   }
 
+  /* sizeDelta.  The rect has to be re-resolved, not just resized: with a
+     centred pivot a smaller rect must stay centred on the same point, and
+     shrinking only the box leaves the art off to one side -- which is what
+     made the pause glyph sit left of its circle. */
   setSize(w, h) {
-    this.rect = { ...this.rect, w, h };
+    const pw = this.parent ? this.parent.rect.w : W, ph = this.parent ? this.parent.rect.h : H;
+    const nr = { ...this.node.rect, size: [w, h], aMin: [0, 0], aMax: [0, 0] };
+    const anchorRef = [pw * this.node.rect.aMin[0] +
+                       (pw * this.node.rect.aMax[0] - pw * this.node.rect.aMin[0]) * this.node.rect.pivot[0],
+                       ph * this.node.rect.aMin[1] +
+                       (ph * this.node.rect.aMax[1] - ph * this.node.rect.aMin[1]) * this.node.rect.pivot[1]];
+    const piv = this.node.rect.pivot;
+    const px = anchorRef[0] + this.pos[0], py = anchorRef[1] + this.pos[1];
+    this.rect = { x: px - w * piv[0], y: py - h * piv[1], w, h };
+    this.el.style.left = `${this.rect.x}px`;
+    this.el.style.top = `${ph - this.rect.y - h}px`;
     this.el.style.width = w + 'px'; this.el.style.height = h + 'px';
-    if (this._spr) drawSprite(this.img, this._spr, w, h, this._pa);
+    if (this._spr) { drawSprite(this.img, this._spr, w, h, this._pa); applyTint(this.img, this.tint); }
+    return this;
+  }
+
+  /* Image.SetNativeSize -- the rect becomes the sprite's own m_Rect size */
+  setNativeSize() {
+    const r = spriteRec(this._spr);
+    if (r) this.setSize(r.sw, r.sh);
     return this;
   }
 }

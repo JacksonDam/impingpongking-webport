@@ -241,3 +241,17 @@ grep -n 'hitBackStartFrame' analysis/src/*.cs           # every site touching a 
 - `requestAnimationFrame` does **not** advance under headless Chrome's
   `--virtual-time-budget`, but timers do. The port drives its clock from both,
   or nothing animates in a screenshot.
+- **Unity scales and rotates about the pivot**, not the element's centre. The
+  bridge's rivals pivot at y = 0.033 — their feet — so scaling them about the
+  middle lifts them hundreds of pixels off the ground. `transform-origin` has to
+  be the node's own pivot.
+- **`sizeDelta` re-resolves the rect.** Shrinking a centre-pivoted node keeps it
+  centred on the same point; resizing only the box slides the art sideways,
+  which is what put the pause glyph off-centre in its circle.
+- **`enabled: false` is common on nodes that are only turned on by code** — the
+  PAUSED text, the tutorial's table light, and a ScrollRect's own Image (which
+  exists to catch drags, not to be drawn). Ignore the flag and you get white
+  rectangles where the game shows nothing.
+- **A null-sprite Image is a colour quad**, so when code later gives it a
+  sprite the quad's `background-color` has to be cleared or the art lands on a
+  white box.

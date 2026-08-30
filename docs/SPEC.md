@@ -345,6 +345,42 @@ Winning a ball sets `SequenceState = ManBLose`, adds one to `PlayerScore` and
 plays `Herray`; `WinAnim` shows `WIN A POINT` or `WIN A MATCH`, pops the player's
 pad to 1.2, and on a **match** win brings the crowd up.
 
+### The HIT buttons
+
+`ShowHitBtn` 0x34B68 gives both buttons `HitBtnSprites[OutterStageOrder % 5]`,
+so they carry the same colour as that rival's background — five buttons for the
+five backgrounds. Pressing one is `LeftBtnDownAnim` 0x34F1C: the button **drops
+30 px** over 0.05 s and its shadow is switched off; releasing cancels that and
+puts it back at (∓17.5, −742) with the shadow on. It is never scaled.
+
+### The score pads
+
+Each pad is a flip card. `<PlayerScorePadFlip>c__Iterator4` shows the top and
+bottom halves, writes the old number below and the new one above, folds the card
+shut with `scaleY -> 0` over 0.12 s on easeInSine, swaps the total, and unfolds
+it over 0.12 s on easeOutSine.
+
+### The rival ladder
+
+`TestBridge` (`BridgeGroupDavid`) is one object serving three screens.
+`Init` 0x15AC0 builds a ladder of all fifty rivals, 650 apart, each at 0.4 scale
+with a Defeated stamp, and `MoveToCurRival` 0x16608 scrolls it so the current
+one is centred.
+
+- **Before a match** `BridgeShowWhenEnterGame` shows the challenger card: the
+  three portraits slide in from +500 x while the middle one grows from 0.65 to
+  full size, over the rival's number as a white watermark and his name below.
+- **On pause** `RivalModeScene::Pause` 0x35048 activates the bridge and hides
+  the HIT buttons and score pads; `PauseAnim` draws only the current rival and
+  his two neighbours — the current one full size at y = −214, the others at 0.4
+  and y = −161 — fades the number to **0.65** alpha at font size 300, and brings
+  up PAUSED and RESUME. There is no referee: `SettingBtnHide` sweeps him off the
+  moment he is activated.
+- **After a win** `ChangeMiddleEnemyToLoseSprite` 0x163B8 swaps the rival for
+  `Menu-Opponent lose`, drops his head 30 px, and 0.3 s later fades in his line
+  from `RivalModeEnemyWordsWhenLose[(totalEnemyNum − stage) % 10]` — "You Win.",
+  "You win, I'm impressed.", "(Clap, Clap, Clap)" and so on.
+
 ### The crowd
 
 `RivalModeAudiance::SetUpPattern` 0x25474 places three rows, sizes them
@@ -472,8 +508,8 @@ Not ported:
   endless mode. All of them are *extracted*: their scenes, ball trails and
   `Core` configuration are in `assets/data/game.js`, and they share `Core`
   unchanged, so what is missing is their scene logic.
-- **The rival bridge** (the scrolling ladder of opponents between matches) and
-  the **Revive** offer.
+- The **Revive** offer, and dragging the rival ladder by hand (it is built and
+  centred, but not scrollable by touch).
 - **Ads, IAP, Facebook, Firebase, GameAnalytics, Crashlytics, cross-sell** and
   the OGBackdoor debug panel: all inert, none of it gameplay. The share panel's
   buttons show and animate but post nowhere.
