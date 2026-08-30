@@ -1,6 +1,8 @@
 # I'm Ping Pong King — web port
 
-[The recovered design spec](docs/SPEC.md) · [how it was reverse-engineered](docs/TOOLCHAIN.md)
+**[Play it](https://jacksondam.com/impingpongking-webport/)** ·
+[the recovered design spec](docs/SPEC.md) ·
+[how it was reverse-engineered](docs/TOOLCHAIN.md)
 
 A port of *I'm Ping Pong King* 2.7 (`com.orangenose.tablefull`, Orangenose
 Studios, 2018) to plain HTML/CSS/JS. Every number, timing, coordinate, string
@@ -11,8 +13,11 @@ it against [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Run it
 
-Open `index.html` in any modern browser. `file://` works, no server and no build
-step. There is a **tap-to-start** screen first: browsers refuse to play audio
+[**jacksondam.com/impingpongking-webport**](https://jacksondam.com/impingpongking-webport/),
+or open `index.html` in any modern browser — `file://` works, no server and no
+build step. (The first load pulls about 16 MB of atlases and audio.)
+
+There is a **tap-to-start** screen first: browsers refuse to play audio
 before a gesture, and the very first thing the game plays is the splash's click
 and explosion. The original has no such gate — on a phone, launching the app is
 the gesture.

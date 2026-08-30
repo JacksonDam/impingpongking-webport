@@ -418,8 +418,13 @@
       const pages = n => Object.keys(by).filter(a => a.indexOf(n) === 0).length;
       eq('MenuScene_Pack1 page count', pages('SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47'), 4);
       eq('EndingScene page count', pages('SpriteAtlasTexture-EndingScene-2048x2048-fmt4'), 2);
-      eq('Menu-Opponent01 is on page #17',
-         g.sprites['Menu-Opponent01'][0], 'SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47#17');
+      eq('Menu-Opponent01 is on page 17',
+         g.sprites['Menu-Opponent01'][0], 'SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47-p17');
+      /* the page suffix has to survive a URL: these names become path segments
+         when the port is served over HTTP, and '#' would start a fragment */
+      ok('no atlas name needs URL escaping',
+         Object.keys(by).every(a => encodeURIComponent(a) === a.replace(/ /g, '%20')),
+         Object.keys(by).find(a => encodeURIComponent(a) !== a.replace(/ /g, '%20')));
     }
 
     /* ------------------------------------------- the numeric APK tables

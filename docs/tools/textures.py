@@ -108,8 +108,13 @@ RESDIR = ''
 
 
 def atlas_page_name(name, path_id, is_multi_page):
-    """Stable per-page name for a texture whose name is shared by its siblings."""
-    return '%s#%d' % (name, path_id) if is_multi_page else name
+    """Stable per-page name for a texture whose name is shared by its siblings.
+
+    The suffix has to be URL-safe: these names become file names and then URL
+    path segments, and '#' would have to survive round-tripping through
+    encodeURIComponent and a CDN.  '-p<path_id>' cannot be mistaken for a
+    fragment and needs no escaping at all."""
+    return '%s-p%d' % (name, path_id) if is_multi_page else name
 
 
 def main():
@@ -134,7 +139,7 @@ def main():
             continue
         name = atlas_page_name(t['name'], o.path_id, seen[t['name']] > 1)
         used[t['name']] += 1
-        safe = ''.join(c if c.isalnum() or c in '-_.() #' else '_' for c in name)
+        safe = ''.join(c if c.isalnum() or c in '-_.() ' else '_' for c in name)
         with open(os.path.join(dst, '%s.png' % safe), 'wb') as f:
             f.write(png(t['width'], t['height'], rgba))
         n += 1
