@@ -841,6 +841,61 @@
       Object.assign(DB.data, JSON.parse(keep));
     }
 
+    /* ------------------------------------------------- the ball is visible
+     * Every BallTrail image ships `enabled: false` and the code turns exactly
+     * one of them on, so ChangeTrailImage has to toggle Image.enabled --
+     * which the builder renders as visibility -- and not only SetActive.
+     * Toggling display alone leaves the ball laid out, sprited and invisible. */
+    {
+      const trails = Object.keys(g.scenes.RivalModeScene)
+        .filter(k => /Canvas\/Core\/BallTrail Group\/[^/]+$/.test(k));
+      ok('the scene has ball trails', trails.length > 20, String(trails.length));
+      ok('and every one of them ships disabled',
+         trails.every(k => { const im = g.scenes.RivalModeScene[k].image;
+                             return !im || im.enabled === false; }));
+
+      const host = document.createElement('div');
+      const v = new RivalModeSceneView(host, mgr, 1);
+      const c = v.core;
+      c.ChangeTrailImage('From-B1-A1 Image');
+      const n = c.trailNode['From-B1-A1 Image'];
+      c.BallTrailSequenceTmp = c.trails['From-B1-A1 Image'].frames;
+      c.trailSet(0);
+      eq('the trail in play is the one named', c.curTrail, 'From-B1-A1 Image');
+      ok('its image is on', n.img && n.img.style.visibility !== 'hidden',
+         n.img && n.img.style.visibility);
+      ok('and it has a sprite', !!n._spr, String(n._spr));
+      /* and the one it replaced goes back off */
+      c.ChangeTrailImage('To-A1-B1 Image');
+      eq('the previous trail is switched off', n.img.style.visibility, 'hidden');
+
+      /* the toss is not a BallTrail component -- Core owns that node itself */
+      ok('the toss ball is reachable by name', !!c.trailNode['TossBallTrail Image']);
+      c.ShowTossBall();
+      eq('and showing it makes it current', c.curTrail, 'TossBallTrail Image');
+      { const tn = c.trailNode['TossBallTrail Image'];
+        ok('with its image on', !!(tn && tn.img && tn.img.style.visibility !== 'hidden')); }
+      v.destroy();
+    }
+
+    /* the tutorial's own HIT buttons ride up from off-stage */
+    {
+      const host = document.createElement('div');
+      const rival = new RivalModeSceneView(host, mgr, 1);
+      const t = new TutorialView(host, mgr, rival);
+      near('the left button starts off-stage', t.leftBtn.localPos[1], -1916, 1);
+      near('and so does the right', t.rightBtn.localPos[1], -1919, 1);
+      eq('their labels are the real ones',
+         t.leftBtn.scene.n('TutorialLeft Btn/HitL Text').txt.textContent +
+         '/' + t.rightBtn.scene.n('TutorialRight Btn/HitR Text').txt.textContent,
+         'HIT L/HIT R');
+      /* a tap dips the button, exactly as Tutorial_HitLeft does */
+      t.btnDown(true);
+      LT.tick(performance.now() + 100);
+      near('a press dips it to -746.8', t.leftBtn.localPos[1], -746.8, 1);
+      t.destroy(); rival.destroy();
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

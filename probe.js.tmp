@@ -1,0 +1,18 @@
+setTimeout(function () {
+  var v = window.mgr && window.mgr.view; if (!v || !v.core) return;
+  var c = v.core, out = [];
+  out.push('curTrail=' + c.curTrail);
+  out.push('idx=' + c.curSpriteIndex + '/' + (c.BallTrailSequenceTmp||[]).length);
+  var n = c.trailNode[c.curTrail];
+  if (n) {
+    var img = n.img;
+    out.push('node act=' + n.active + ' tint=' + JSON.stringify(n.tint) + ' spr=' + n._spr);
+    out.push('img display=' + (img?img.style.display:'-') + ' vis=' + (img?img.style.visibility:'-') +
+             ' bg=' + (img? (img.style.backgroundImage||'').slice(0,60) : '-') +
+             ' size=' + (img? img.style.width+'x'+img.style.height : '-') +
+             ' opacity=' + (img?img.style.opacity:'-'));
+    var r = n.el.getBoundingClientRect();
+    out.push('rect=' + Math.round(r.left)+','+Math.round(r.top)+' '+Math.round(r.width)+'x'+Math.round(r.height));
+  } else out.push('NO NODE for ' + c.curTrail);
+  document.getElementById('errs').textContent = out.join(' | ');
+}, 4200);

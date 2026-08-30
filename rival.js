@@ -36,6 +36,11 @@ class Core {
       const n = scene.n(P + 'BallTrail Group/' + name);
       if (n) { n.setActive(false); this.trailNode[name] = n; }
     }
+    /* The toss is not a BallTrail_* component at all -- Core carries its own
+       TossBallTrailImage and BallTrailAnim assigns it to BallTrailImageTmp
+       directly (0x2xxxx).  It still has to be reachable by name. */
+    const toss = scene.n(P + 'BallTrail Group/TossBallTrail Image');
+    if (toss) { toss.setActive(false); this.trailNode['TossBallTrail Image'] = toss; }
     this.manA = scene.n(P + 'ManA Group/ManA Image');
     this.manAA3 = scene.n(P + 'ManA Group/ManAA3 Image');
     this.manAWinLose = scene.n(P + 'ManA Group/ManAWinLose Image');
@@ -99,16 +104,22 @@ class Core {
     this.BallTrailAnim();
   }
 
-  /* Core::ChangeTrailImage 0x21DAC */
+  /* Core::ChangeTrailImage 0x21DAC.
+     Every BallTrail image ships `enabled: false` in the scene and the code
+     turns exactly one of them on -- so this has to toggle Image.enabled
+     (visibility), not just SetActive (display).  Toggling only the latter
+     leaves the builder's `visibility: hidden` in place and the ball never
+     appears, even though the element is laid out and its sprite is set. */
   ChangeTrailImage(name) {
     const prev = this.curTrail && this.trailNode[this.curTrail];
-    if (prev) { prev.setSprite(this.cfg.NothingSprite); prev.setActive(false); }
+    if (prev) { prev.setSprite(this.cfg.NothingSprite); prev.setEnabled(false); prev.setActive(false); }
     const t = this.trails[name];
     if (!t) return;
     this.curTrail = name;
     const n = this.trailNode[name];
     n.setColor([0, 0, 0, 1]);                // BallTrailImageTmp.color = black
     n.setActive(true);
+    n.setEnabled(true);                      // BallTrailImageTmp.enabled = 1
     if (t.kind === 'From' && this.tableEffect) {
       /* TouchEffectPos - (0,102,0) * UIScaleFactor; the port runs at scale 1 */
       this.tableEffect.setLocalPos(t.effect[0], t.effect[1] - 102);
@@ -132,6 +143,18 @@ class Core {
       this.BallTrailSequenceTmp = t.frames;
       this.LoseBallTrailAnimDelay = t.interval;      // SetLoseBallFrameInterval
     }
+  }
+
+  /* BallTrailImageTmp = TossBallTrailImage; color = black; enabled = 1 */
+  ShowTossBall() {
+    const prev = this.curTrail && this.trailNode[this.curTrail];
+    if (prev) { prev.setSprite(this.cfg.NothingSprite); prev.setEnabled(false); prev.setActive(false); }
+    const n = this.trailNode['TossBallTrail Image'];
+    if (!n) return;
+    this.curTrail = 'TossBallTrail Image';
+    n.setColor([0, 0, 0, 1]);
+    n.setActive(true);
+    n.setEnabled(true);
   }
 
   trailSet(i) {
@@ -312,7 +335,7 @@ class Core {
     this.ManBTossBallAnim();
     if (!await this.waitP(0.2)) return;
 
-    this.ChangeTrailImage('TossBallTrail Image');
+    this.ShowTossBall();
     this.BallTrailSequenceTmp = this.cfg.TossBallTrialSequence;
     for (let i = 0; i < this.BallTrailSequenceTmp.length; i++) {
       if (!alive()) return;

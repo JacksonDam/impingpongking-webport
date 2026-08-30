@@ -463,8 +463,10 @@ async function boot() {
     Audio_.unlock();
     if (e.repeat) return;
     const v = mgr.view;
-    if (e.key === 'ArrowLeft' || e.key === 'a') { if (v && v.GoLeft) v.GoLeft(); }
-    else if (e.key === 'ArrowRight' || e.key === 'd') { if (v && v.GoRight) v.GoRight(); }
+    /* while the tutorial is up it owns the swings, not the rival scene */
+    const t = mgr.tutorial;
+    if (e.key === 'ArrowLeft' || e.key === 'a') { if (t) t.onTap(true); else if (v && v.GoLeft) v.GoLeft(); }
+    else if (e.key === 'ArrowRight' || e.key === 'd') { if (t) t.onTap(false); else if (v && v.GoRight) v.GoRight(); }
     else if (e.key === 'p') { if (mgr.settings) mgr.settings.onSettingBtnDown(mgr.curSceneState); }
     else if (e.key === ' ') { if (v instanceof HomeSceneView) v.onLetsFightPressed(); }
   });

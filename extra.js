@@ -188,8 +188,25 @@ class TutorialView {
     await this.lineUpAndReady(alive);
   }
 
+  /* Tutorial_HitLeft 0x3C0xx / Tutorial_HitRight 0x3C1A8 -- the button dips
+     to y = -746.8 over 0.03 s, and Tutorial_OnHitLeftBtnUp 0x3C158 puts it
+     back at (-78, -732). */
+  btnDown(left) {
+    const n = left ? this.leftBtn : this.rightBtn;
+    if (!n || !n.active) return;
+    this._bt = this._bt || [];
+    const i = left ? 0 : 1;
+    if (this._bt[i]) this._bt[i].cancel();
+    this._bt[i] = LT.moveLocalY(n, -746.8, 0.03);
+    LT.delayedCall(0.12, () => {
+      if (this._bt && this._bt[i]) this._bt[i].cancel();
+      n.setLocalPos(left ? -78 : 78, -732);
+    });
+  }
+
   /* the player taps during the taught hit window */
   onTap(left) {
+    this.btnDown(left);
     if (this.waitingHit === undefined) return false;
     if (left !== this.waitingHit) return true;             // wrong side: ignored
     this.hitOk = true;
@@ -272,7 +289,7 @@ class TutorialView {
     c.ManBTossBallAnim();
     await wait(200);
     if (!alive()) return false;
-    c.ChangeTrailImage('TossBallTrail Image');
+    c.ShowTossBall();
     c.BallTrailSequenceTmp = c.cfg.TossBallTrialSequence;
     for (let i = 0; i < c.BallTrailSequenceTmp.length; i++) {
       if (!alive()) return false;
@@ -330,6 +347,15 @@ class TutorialView {
     /* bars in (0.8 s, easeOutBack) */
     if (this.bottom) LT.moveLocalY(this.bottom, -1155, 0.8).setEase(27);
     if (this.top) LT.moveLocalY(this.top, 1155, 0.8).setEase(27);
+    /* <TutorialStart>c__Iterator0::<>m__0 at +0.1 s: the two HIT buttons ride
+       up from y = -1917, where the prefab parks them, to -732 */
+    LT.delayedCall(0.1, () => {
+      for (const n of [this.leftBtn, this.rightBtn]) {
+        if (!n) continue;
+        n.setActive(true);
+        LT.moveLocalY(n, -732, 0.8).setEase(27);
+      }
+    });
     /* only the text and the two arrows fade in -- Skip Group's own Image has a
        null sprite, so fading the group would paint a white rectangle. */
     if (!await W_(0.8)) return;
@@ -380,6 +406,7 @@ class TutorialView {
     if (this.top) LT.moveLocalY(this.top, 2000, 0.3);
     if (this.bottom) LT.moveLocalY(this.bottom, -2000, 0.3);
     for (const n of [this.leftFinger, this.rightFinger, this.instruction]) if (n) LT.alpha(n, 0, 0.5);
+    for (const n of [this.leftBtn, this.rightBtn]) if (n) n.setActive(false);
     if (!await W_(0.8)) return;
     await this.lineUpAndReady(alive);
   }
@@ -441,7 +468,7 @@ class TutorialView {
     if (isServe) {
       c.ManBTossBallAnim();
       await wait(200); if (!alive()) return false;
-      c.ChangeTrailImage('TossBallTrail Image');
+      c.ShowTossBall();
       c.BallTrailSequenceTmp = c.cfg.TossBallTrialSequence;
       for (let i = 0; i < c.BallTrailSequenceTmp.length; i++) {
         if (!alive()) return false;
@@ -700,7 +727,7 @@ class EndingView {
     c.ManBTossBallAnim();
     await wait(200);
     if (!alive()) return false;
-    c.ChangeTrailImage('TossBallTrail Image');
+    c.ShowTossBall();
     c.BallTrailSequenceTmp = c.cfg.TossBallTrialSequence;
     for (let i = 0; i < c.BallTrailSequenceTmp.length; i++) {
       if (!alive()) return false;
