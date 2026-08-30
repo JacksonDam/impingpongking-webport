@@ -26,7 +26,8 @@ const DB = {
           RivalMode_LastShareShowsUp: 0, OutterStageRetryCount: {},
           OGTournamentStageOrder: 0, IsTournamentComplete: false,
           TournamentStageRetryCount: {}, isEndlessEndterAnyMode: false,
-          NumOfRateUsShow: 0 },
+          NumOfRateUsShow: 0, isWin3BallToPassShow: false,
+          isWin5BallToPassShow: false },
   load() {
     try { Object.assign(this.data, JSON.parse(localStorage.getItem(this.key) || '{}')); }
     catch (e) { }
@@ -287,9 +288,15 @@ class GameMgr {
       return;
     }
     if (this.tutorial) {
+      if (this.tutorial.skipTap(x, y)) return;
       if (this.tutorial.imReadyTap(x, y)) return;
       const st = $('#stage').getBoundingClientRect();
       if (this.tutorial.onTap(x - st.left < st.width / 2)) return;
+      return;
+    }
+    /* the rule alert blocks the rally under it */
+    if (this.view && this.view.rule) {
+      if (this.view.hitRule(x, y)) this.view.RuleAlertOKBtnClick();
       return;
     }
     /* the revive offer swallows every touch while it is up */

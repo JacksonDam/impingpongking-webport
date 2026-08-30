@@ -924,8 +924,51 @@ class RivalModeSceneView {
       if (c.manA) LT.alpha(c.manA, 1, 0.4);
       if (c.nameLine1) LT.alpha(c.nameLine1, 1, 0.4);
       if (c.nameLine2) LT.alpha(c.nameLine2, 1, 0.4);
-      LT.delayedCall(1, () => this.m__1D());
+      /* the rules are explained once before the first rival and once again
+         when the match length changes at rival five (m__16, IL_00A8) */
+      const o = DB.data.OutterStageOrder;
+      if ((o === 0 && !DB.data.isWin3BallToPassShow) ||
+          (o === 5 && !DB.data.isWin5BallToPassShow)) {
+        LT.delayedCall(0.8, () => this.ShowRuleAlert(o === 0 ? 3 : 5));
+      } else {
+        LT.delayedCall(1, () => this.m__1D());
+      }
     });
+  }
+
+  /* <Reset_EnterGame>m__1C 0x358C4 -- the Rule Group prefab slides in from
+     x = -1500, its score pad breathing at 1.2 and its OK button at 1.05. */
+  ShowRuleAlert(balls) {
+    if (this.rule) this.rule.destroy();
+    this.rule = new Scene('prefab:Rule Group', this.scene.root);
+    const r = this.rule;
+    const root = r.n('');
+    if (root) { root.setActive(true); root.setLocalPos(-1500, 0); }
+    const text = r.n('Alert Group/Rule Text');
+    const pad = r.n('Alert Group/PlayerScorePad Image');
+    const score = r.n('Alert Group/PlayerScorePad Image/PlayerScore Text');
+    const ok = r.n('Alert Group/OKBtn Image');
+    if (text) text.setText(balls === 3 ? 'Win 3 balls to win the game.'
+                                       : 'For subsequent levels,\nWin 5 balls to win the game.');
+    if (score) score.setText(String(balls));
+    this.ruleOk = ok;
+    if (root) LT.moveLocalX(root, 0, 0.5).setEase(27);
+    if (pad) LT.scale(pad, 1.2, 0.3).setEase(15).setLoopPingPong(-1);
+    if (ok) LT.scale(ok, 1.05, 0.8).setEase(15).setLoopPingPong(-1);
+    DB.data[balls === 3 ? 'isWin3BallToPassShow' : 'isWin5BallToPassShow'] = true;
+    DB.save();
+  }
+
+  hitRule(x, y) {
+    if (!this.rule || !this.ruleOk) return false;
+    const b = this.ruleOk.el.getBoundingClientRect();
+    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+  }
+
+  /* RivalModeScene::RuleAlertOKBtnClick 0x3xxxx */
+  RuleAlertOKBtnClick() {
+    if (this.rule) { this.rule.destroy(); this.rule = null; this.ruleOk = null; }
+    LT.delayedCall(0.3, () => this.m__1D());
   }
 
   m__1D() {                                            // 0x35A90

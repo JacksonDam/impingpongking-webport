@@ -38,6 +38,24 @@ class TutorialView {
     this.rightBtn = N(this.cfg.Tutorial_RightBtnImage);
     this.skipGroup = N(this.cfg.SkipGroup);
     this.skipAlert = N(this.cfg.SkipTutorialAlertGroup);
+    this.skipAlertBg = N(this.cfg.SkipAlertBGImage);
+    this.skipAlert1 = N(this.cfg.SkipAlert1Text);
+    this.skipAlert21 = N(this.cfg.SkipAlert2_1Text);
+    this.skipAlert22 = N(this.cfg.SkipAlert2_2Text);
+    this.skipAlert23 = N(this.cfg.SkipAlert2_3Text);
+    this.skipYes = N(this.cfg.SkipAlertYesBtn);
+    this.skipNo = N(this.cfg.SkipAlertNoBtn);
+    this.skipOk = N(this.cfg.SkipAlertOKBtn);
+    this.skipYesText = N(this.cfg.SkipAlertYesText);
+    this.skipNoText = N(this.cfg.SkipAlertNoText);
+    this.skipOkText = N(this.cfg.SkipAlertOKText);
+    this.skipMenu = N(this.cfg.SkipMenuImage);
+    this.skipHowTo = N(this.cfg.SkipHowToPlayImage);
+    this.skipArrow1 = N(this.cfg.SkipAlertArrow1Image);
+    this.skipArrow2 = N(this.cfg.SkipAlertArrow2Image);
+    this.IsSkipAlertShow = false;
+    this.IsTutorialSkip = false;
+    this.skipStage = 0;                              // 0 none, 1 Yes/No, 2 OK
     this.hitsDone = 0;
     this.IsKnowTheRuleClick = false;
     this.prep();
@@ -55,6 +73,109 @@ class TutorialView {
        y = +/-1155 and x = 201. */
     for (const d of [this.hi, this.ppk, this.goal, this.ready]) if (d) d.setLocalScale(0, 0);
     if (this.skipAlert) this.skipAlert.setActive(false);
+    /* the second alert's half of the panel starts invisible; the Yes button
+       fades it up in place of the first */
+    for (const n of [this.skipAlert21, this.skipAlert22, this.skipAlert23,
+                     this.skipOk, this.skipOkText, this.skipMenu,
+                     this.skipHowTo, this.skipArrow1, this.skipArrow2]) if (n) n.setAlpha(0);
+  }
+
+  /* ------------------------------------------------------------- skipping */
+  inside(n, x, y) {
+    if (!n || !n.active) return false;
+    const r = n.el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
+  /* Tutorial_OnSkipBtnClick 0x3C310 */
+  skipTap(x, y) {
+    if (this.skipStage === 1) {
+      if (this.inside(this.skipYes, x, y)) { this.SkipAlert1_Yes(); return true; }
+      if (this.inside(this.skipNo, x, y)) { this.SkipAlert1_No(); return true; }
+      return true;                                   // the panel blocks the rest
+    }
+    if (this.skipStage === 2) {
+      if (this.inside(this.skipOk, x, y)) { this.SkipAlert2_OK(); return true; }
+      return true;
+    }
+    if (this.IsTutorialSkip) return false;
+    if (!this.inside(this.skipGroup, x, y) && !this.inside(this.skipText, x, y)) return false;
+    this.IsSkipAlertShow = true;
+    this.skipStage = 1;
+    if (this.skipAlert) this.skipAlert.setActive(true);
+    if (this.skipAlertBg) {
+      this.skipAlertBg.setLocalScale(0, 0);
+      LT.scale(this.skipAlertBg, 1, 0.25).setEase(30);
+    }
+    return true;
+  }
+
+  /* Tutorail_OnSkipAlert1_YesBtnClick 0x3C380 -- the first block fades out and
+     the "go to home -> menu -> how to play" explainer fades in behind it */
+  SkipAlert1_Yes() {
+    this.skipStage = 0;
+    for (const n of [this.skipNo, this.skipYes, this.skipYesText,
+                     this.skipNoText, this.skipAlert1]) if (n) LT.alpha(n, 0, 0.2);
+    LT.delayedCall(0.1, () => {
+      if (this.skipAlert21) LT.alpha(this.skipAlert21, 0.8, 0.3);
+      if (this.skipAlert22) LT.alpha(this.skipAlert22, 0.8, 0.3);
+      if (this.skipAlert23) LT.alpha(this.skipAlert23, 1, 0.3);
+      if (this.skipOkText) LT.alpha(this.skipOkText, 1, 0.3);
+      for (const n of [this.skipArrow1, this.skipArrow2, this.skipMenu, this.skipHowTo])
+        if (n) LT.alpha(n, 1, 0.3);
+      if (this.skipOk) LT.alpha(this.skipOk, 1, 0.3).setOnComplete(() => { this.skipStage = 2; });
+    });
+  }
+  /* Tutorail_OnSkipAlert1_NoBtnClick 0x3C45C */
+  SkipAlert1_No() {
+    this.skipStage = 0;
+    if (this.skipAlertBg) LT.scale(this.skipAlertBg, 0, 0.15).setEase(26).setOnComplete(() => {
+      this.IsSkipAlertShow = false;
+      if (this.skipAlert) this.skipAlert.setActive(false);
+    });
+  }
+  /* Tutorial_OnSkipAlert2_OKBtnClick 0x3C4D8 -- stops TutorialStart and runs
+     SkipAnim, which jumps straight to the ten rivals */
+  SkipAlert2_OK() {
+    this.skipStage = 0;
+    this.IsTutorialSkip = true;
+    if (this.skipAlertBg) LT.scale(this.skipAlertBg, 0, 0.15).setEase(26).setOnComplete(() => {
+      if (this.skipAlert) this.skipAlert.setActive(false);
+    });
+    this.gen = (this.gen | 0) + 1;                   // StopCoroutine("TutorialStart")
+    this.SkipAnim();
+  }
+
+  /* SkipBtnHide 0x3C1xx */
+  SkipBtnHide() {
+    for (const n of [this.skipA1, this.skipA2]) if (n) LT.alpha(n, 0, 0.2);
+    if (this.skipText) LT.alpha(this.skipText, 0, 0.2)
+      .setOnComplete(() => { if (this.skipGroup) this.skipGroup.setActive(false); });
+  }
+
+  /* <SkipAnim>c__Iterator1 0x3F194 -- everything the teaching phase put on
+     screen goes away and the rival line-up runs as normal */
+  async SkipAnim() {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    await wait(600); if (!alive()) return;
+    this.SkipBtnHide();
+    for (const n of [this.leftFinger, this.rightFinger, this.instruction, this.great])
+      if (n) LT.alpha(n, 0, 0.5);
+    const c = this.rival && this.rival.core;
+    if (c) {
+      c.StopRun();
+      const t = c.trailNode[c.curTrail];
+      if (t) t.setActive(false);
+      if (c.manB) LT.alpha(c.manB, 0, 0.5);
+      const notif = this.rival.scene.n('Canvas/Core/Table Image/HitOnTableNotification Image');
+      if (notif) LT.alpha(notif, 0, 0.5);
+    }
+    if (this.top) LT.moveLocalY(this.top, 2000, 0.3);
+    if (this.bottom) LT.moveLocalY(this.bottom, -2000, 0.3);
+    for (const n of [this.leftBtn, this.rightBtn]) if (n) n.setActive(false);
+    await wait(1000); if (!alive()) return;
+    await this.lineUpAndReady(alive);
   }
 
   /* the player taps during the taught hit window */
@@ -189,6 +310,12 @@ class TutorialView {
     if (this.bottom) LT.moveLocalY(this.bottom, -2000, 0.3);
     for (const n of [this.leftFinger, this.rightFinger, this.instruction]) if (n) LT.alpha(n, 0, 0.5);
     if (!await W_(0.8)) return;
+    await this.lineUpAndReady(alive);
+  }
+
+  /* the tail both TutorialStart and SkipAnim run into */
+  async lineUpAndReady(alive) {
+    const W_ = async s => { await wait(s * 1000); return alive(); };
     for (const l of this.lines) {
       if (l) LT.moveLocalX(l, 201, 0.5).setEase(30);
       if (!await W_(0.08)) return;

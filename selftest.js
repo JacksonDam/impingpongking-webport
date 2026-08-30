@@ -608,6 +608,70 @@
       ok('how-to-play and credits panels exist', !!st.howTo && !!st.credits);
     }
 
+    /* ------------------------------------------------ nothing left over
+     * The build ships exactly two Unity scenes, OGSplashScene and _Project;
+     * every screen is a BaseScene view group inside the latter.  Enumerating
+     * the MonoBehaviours actually present is the closing oracle for "is it all
+     * ported?", and it is what says TestModeScene and DemoMode are not in this
+     * build at all -- the classes are compiled in, but no GameObject carries
+     * them, so there is nothing to port. */
+    {
+      const scripts = new Set();
+      for (const sn in g.scenes) for (const k in g.scenes[sn]) {
+        const c = g.scenes[sn][k].comp;
+        if (c) for (const n in c) scripts.add(n);
+      }
+      eq('scripts in the shipped scenes', scripts.size, 38);
+      for (const dead of ['TestModeScene', 'DemoMode', 'DemoResultPage',
+                          'TestModeListComponent', 'DemoModeListComponent'])
+        ok(dead + ' is not in this build', !scripts.has(dead));
+      /* and every one that IS present has something in the port */
+      const covered = new Set([
+        'BallTrail_From', 'BallTrail_To', 'BallTrail_Lose',        // trail data
+        'Core', 'RivalModeModel', 'RivalModeScene', 'RivalModeAudiance',
+        'RivalModeTutorial', 'RivalModeEnding', 'RivalModeRule', 'Revive',
+        'ScorePad', 'ShareGIF', 'GIFComponent', 'TouchTableNotification',
+        'TestBridge', 'TournamentBridge', 'TournamentInfo', 'TestModeScrollRect',
+        'HomeScene', 'Table_Settings', 'HowToPlayInstruction',
+        'OGSplashAnimationEvents', 'EndlessController',
+        'EyesightModeScene', 'ConcentrateModeScene', 'InvertModeScene',
+        'EyesightModeListComponent', 'ConcentrateModeListComponent',
+        'InvertModeListComponent', 'PlayerControlBase', 'ConcentratePlayerControl',
+        'InvertModePlayerControl', 'PausePageBase', 'ResultPageBase',
+        /* present in the scene but unreachable in this build: */
+        'RivalModeBridge', 'RivalModeBridgeScrollRect',   // the older 10-rival bridge
+        'BannerController',                               // the ad banner
+      ]);
+      const missing = [...scripts].filter(n => !covered.has(n));
+      eq('every shipped script is accounted for', JSON.stringify(missing), '[]');
+      /* RivalModeScene.Bridge is a TestBridge; nothing holds the old one */
+      ok('the old rival bridge ships switched off',
+         !g.scenes.RivalModeScene['Canvas/Bridge Group'].active);
+    }
+
+    /* the rule alert */
+    {
+      const host = document.createElement('div');
+      const keep = DB.data.isWin3BallToPassShow;
+      DB.data.isWin3BallToPassShow = false;
+      const v = new RivalModeSceneView(host, mgr, 1);
+      v.ShowRuleAlert(3);
+      ok('the rule alert appears', !!v.rule);
+      eq('and states the rule', v.rule.n('Alert Group/Rule Text').txt.textContent,
+         'Win 3 balls to win the game.');
+      eq('with the ball count on the pad',
+         v.rule.n('Alert Group/PlayerScorePad Image/PlayerScore Text').txt.textContent, '3');
+      ok('and it only shows once', DB.data.isWin3BallToPassShow);
+      v.ShowRuleAlert(5);
+      eq('the five-ball rule reads differently',
+         v.rule.n('Alert Group/Rule Text').txt.textContent,
+         'For subsequent levels,\nWin 5 balls to win the game.');
+      v.RuleAlertOKBtnClick();
+      ok('OK takes it away', !v.rule);
+      DB.data.isWin3BallToPassShow = keep;
+      v.destroy();
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');
