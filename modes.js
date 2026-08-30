@@ -396,6 +396,13 @@ class ModeSceneView {
     const n = this.core.manA;
     if (n) n.setLocalPos(pos === 'A1' ? -387.6 : 0, -240);
   }
+  /* the lane change is a 0.05 s easeOutBack tween, and the swing is its
+     onComplete (GoLeft 0x33xxx) */
+  moveManA(pos, then) {
+    const n = this.core.manA;
+    if (!n) { if (then) then(); return; }
+    LT.moveLocal(n, pos === 'A1' ? -387.6 : 0, -240, 0.05).setEase(27).setOnComplete(then);
+  }
 
   /* PlayerControl_OnLeftPanelDown 0xCA50 (Eyesight); the other two scenes have
      the same body. */
@@ -409,14 +416,13 @@ class ModeSceneView {
         ? c.cfg.BlackSwingSequence : c.cfg.NormalSwingSequence;
       c.ManACurPos = 'A1';
       if (from === 'A1') c.ManASwing();
-      else { this.placeManA('A1'); LT.delayedCall(0.05, () => c.ManASwing()); }
+      else this.moveManA('A1', () => c.ManASwing());
     } else {
       c.ManASwingSequenceTmp = (c.SequenceState === SeqState.Lose)
         ? c.cfg.BlackSwingSequence : c.cfg.NormalSwingSequence;
       if (from === 'A1') {
         c.ManACurPos = (c.ManAHitPos === 'A3') ? 'A3' : 'A2';
-        this.placeManA(c.ManACurPos);
-        LT.delayedCall(0.05, () => c.ManASwing());
+        this.moveManA(c.ManACurPos, () => c.ManASwing());
       } else if (from === 'A2') {
         c.ManACurPos = (c.ManAHitPos === 'A3') ? 'A3' : 'A2';
         c.ManASwing();

@@ -38,12 +38,13 @@ copy it across; the repo copy is the one people read.
 ## 3. Verification discipline
 
 ```sh
-./selftest.sh                  # 117 assertions, headless
-./shot2.sh look "auto=1" 9000  # screenshot 9 s in
+./selftest.sh                    # 238 assertions, headless
+./shot2.sh look "auto=1" 9000    # screenshot 9 s in
+./errs.sh "goto=rival" 6000      # dump every uncaught error the page hit
 ```
 
 **Always do the negative check.** After adding an assertion, break the constant
-it covers and confirm that assertion — and ideally only that one — fails. Four
+it covers and confirm that assertion — and ideally only that one — fails. Six
 assertions in this suite passed vacuously until that was done:
 
 - the sweet-spot pair used frame indices that did not straddle the
@@ -51,8 +52,17 @@ assertions in this suite passed vacuously until that was done:
   them green;
 - the geometry pair only probed a centre-anchored node, where localPosition and
   anchoredPosition are equal either way — so both the localPosition conversion
-  and the driven-Canvas pivot could be deleted with the suite still passing.
-  They now probe an edge-anchored node and a stretched one.
+  and the driven-Canvas pivot could be deleted with the suite still passing;
+- the `setSize` test resized a button to the size it already had;
+- the rich-text assertions threw instead of failing when the `.rt` wrapper was
+  removed, which kills the whole run and prints nothing. Assertions that reach
+  into the DOM have to be written defensively, or a negative check reads as a
+  pass.
+
+The suite ends with a **coverage oracle**: it enumerates every MonoBehaviour
+present in the shipped scenes (38 of them) and fails if any is not on an
+explicit "ported, or accounted for" list. A future extraction that turns up a
+39th script fails loudly instead of passing quietly.
 
 ## 4. Bugs found and fixed while porting (don't re-litigate)
 
@@ -79,49 +89,92 @@ assertions in this suite passed vacuously until that was done:
 | white rectangles on the bridge | `enabled: false` Images that only code turns on, and null-sprite quads not cleared when a sprite arrives |
 | the pause glyph sat left of its circle | `sizeDelta` must re-resolve the rect, not just resize the box |
 | no audio at all until the first click | browsers block audio before a gesture; the port needs a tap-to-start gate the original does not |
+| every rival's portrait was two figures mashed together | **MenuScene_Pack1 is a FOUR page sprite atlas** and EndingScene a two page one. Unity gives every page of an atlas the same texture name, and both `textures.py` and `sprites.py` keyed by that name, so three pages of four were overwritten. Pages are now named apart by path_id. Oracle: no two sprites may share atlas pixels — across all 136 pages, none do. |
+| `Today's <color="#FFCB39FF">GIF</color>` printed literally | ten strings carry Unity rich text (`<color>`, `<size>`, `<b>`, `<i>`) and it was never converted |
+| the Eyesight intro read as two interleaved columns | `.txt` is a flex container (that is how Unity's nine TextAnchors are done), so the `<span>` a `<color>` tag produces split the paragraph into three flex items laid out in a **row**. All text now goes into a single `.rt` child. |
+| two layered texts sat half a line apart | CSS collapses a newline that ends a block; Unity's `UI.Text` does not |
+| the tournament bridge had no layout | `arrays.py` only understood `stelem` with reference elements, so every `Vector3[]` (`dup/ldc/ldelema/newobj/stobj`) and `int[]` (`ldtoken` + `RuntimeHelpers::InitializeArray`, payload at the field's **FieldRVA**) in `TestEnemyDetail` came out empty — the font sizes, number positions and dialog positions the tournament lays itself out with |
 
-Three readings I got wrong and an oracle corrected: Unity **does** serialize a
+Four readings I got wrong and an oracle corrected: Unity **does** serialize a
 public `[Obsolete]` field (`EventTrigger.delegates`); the standing-table lookup
-in `SetToBall` keys on `ManAHitPos`, not `ManACurPos`; and the level index fed
-to `LoadLevelProb` is `OutterStageOrder * 5 + PlayerScore + 1`, not the stage
-number — every ball won inside a match steps the difficulty on.
+in `SetToBall` keys on `ManAHitPos`, not `ManACurPos`; the level index fed to
+`LoadLevelProb` is `OutterStageOrder * 5 + PlayerScore + 1`, not the stage
+number; and `RivalModeEnemyWordsWhenLose[8]` really is "You are good".
 
-## 5. Soft spots — improvised, not read out of the APK
+## 5. Faithful to the original's own bugs
+
+Each of these is reproduced deliberately and marked `[sic]` at the call site:
+
+- **`Group_Extreme` never fires.** Both `LoadLevelProb` 0x2EAA4 and
+  `Endless_MakeBallList` 0x2F7xx test `r >= sum && r < sum` for the last band —
+  its own probability was left out of the upper bound.
+- **Three GIF variants have no art.** `SetShareGIF` 0x3FF44 maps indices 0..4
+  only; 5, 6 and 7 (CatchTheBall, KungFu, Ballet) fall off the end of its switch
+  *and* ship with empty sprite arrays. They are unreachable anyway, because
+  `RivalMode_CurShareGIFIndex` wraps at `FBPostCount` (4).
+- **A tournament match opens on the career's difficulty.**
+  `Reset_EnterGame` 0x34178 calls `LoadLevelProb` with `OutterStageOrder` in
+  both game modes; only after the first point does it switch to
+  `50 + OGTournamentStageOrder * 5 + PlayerScore`.
+- **`GetScoreClass` grades an out-of-range score "S".** The linear search falls
+  through to `Find(x => x.className == "S")` rather than clamping.
+- **Reverse mode resets `RoundCount` instead of clamping it.** Concentrate
+  clamps at 15; Invert sets it back to 0, so its difficulty saws.
+- **`SetUserSpeedByBiasPercentage` is dead in two of the three modes.**
+  Concentrate and Invert each carry a copy of RivalMode's that nothing calls.
+- **The Reverse bridge's silhouette vanishes a slot early** — its guard is
+  `OGTournamentStageOrder > 3` where the ladder's is `>= total - 2`.
+- **`ManBSwingSequenceTmp` is assigned `BlackB3` and immediately overwritten**
+  with `BlackSwing` (Core 0x2032C).
+
+## 6. Soft spots — improvised, not read out of the APK
 
 Fair game to tighten. Everything else carries a source; these don't:
 
-- **ManA's lane change.** A jump plus a 50 ms delay before the swing; the
-  original tweens it over 0.05 s on `setEase(27)`.
-- **The score pads.** Position and art are the scene's; showing the resting face
-  rather than running `ScorePad`'s flip is mine.
 - **Which nodes start visible.** The scenes ship most panels present and fade
   them in; `hideChrome()` is my selection of what a rally needs.
   `RivalModeScene::Reset_EnterGame` 0x34178 has the truth.
-- **The home ball's bounce** while the title is up: the impulse after Let's
-  Fight is the real one (600,600 at gravity scale 3.3), the idle bounce is mine.
-- **The tutorial's little mission** — the three-ball drill between the two
-  taught hits — is left out; the rest of `TutorialStart`'s beats are the real
-  waits.
-- **The match flow between rivals.** The port shows the bridge card and the
-  beaten rival's line, then goes on (via the share panel every third win); the
-  original also offers Revive and a result page.
-- **The ladder does not drag.** `TestBridge::OnDragEnd` and `ScrollingEffect`
-  are not ported; the ladder is built and centred but not scrollable by touch.
+- **The home ball's idle bounce** while the title is up. The impulse after
+  Let's Fight is the real one (600,600 at gravity scale 3.3); the idle loop is
+  mine.
+- **The Credits scroll range.** `LeanTween.value(panel, m__A, 1, 0, 20)` drives
+  a `ScrollRect.verticalNormalizedPosition`; the port moves the content by
+  (content height − viewport height) over the same twenty seconds, which lands
+  on the Orangenose logo but is not the same interpolation.
+- **The banner and billing.** `BannerController` is the ad banner and
+  `TechMgr.Billing` the store; neither exists here, so No Ads always takes the
+  branch a player who has bought it would take, and Rate Us keeps its counter
+  without opening a prompt.
+- **Revive's paywall.** The original gates it on `TechMgr.Ad.HasVideo()` and
+  pays out through a rewarded video. The port takes the branch
+  `OnWatchVideoUp` 0x24CDF already has for `IsTestingRevive` — it calls
+  `OnVideoReward` directly — so the offer appears on the score condition alone.
+  The alternative is code no player could ever reach.
+- **The tap-to-start gate** is an addition: browsers will not play audio before
+  a gesture, so the splash cannot have sound without one.
 
-## 6. Ordered list of what to port next
+## 7. What is *not* ported, and why
 
-1. **The rival bridge** (`RivalModeBridge`) — the scrolling ladder of opponents
-   between matches, with the defeated marks. Its sprites and node wiring are
-   already in `game.js`.
-2. **Revive** and the pause/result panels (`Revive`, `PausePageBase`,
-   `ResultPageBase`).
-3. **The other three modes.** They reuse `Core` unchanged — only the scene logic
-   differs, and their trails and `Core` config are already in `game.js`.
-   `EyesightModeScene` is the closest to RivalMode.
-4. The tutorial's **little mission** (the three-ball drill) and its skip alerts.
-5. `ScorePad`'s flip, and easing on ManA's lane change.
-6. The **OG tournament** and the **endless mode**, both of which have their own
-   ending branch in `RivalModeEnding`.
+Nothing that ships. The build contains exactly two Unity scenes,
+`OGSplashScene` and `_Project`; every screen is a `BaseScene` view group inside
+`_Project`, and the self-test enumerates all 38 MonoBehaviours present.
+
+Three of those 38 have no counterpart here, for reasons that are not "unfinished":
+
+| script | why |
+|---|---|
+| `RivalModeBridge`, `RivalModeBridgeScrollRect` | the older ten-rival bridge. It is in the scene but ships **switched off** and nothing references it — `RivalModeScene.Bridge` is a `TestBridge`. |
+| `BannerController` | the ad banner; there is no ad network here (see §6). |
+
+And two classes are compiled into the assembly but are **not in the build at
+all** — no GameObject carries them, and the Impossible Test list has no card
+for either:
+
+- `TestModeScene` / `TestModeListComponent`
+- `DemoMode` / `DemoModeListComponent` / `DemoResultPage`
+
+They are not portable because they are not in the game. The self-test asserts
+their absence, so if a later extraction turns them up the claim fails.
 
 ## 7. Environment notes
 

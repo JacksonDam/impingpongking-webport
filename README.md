@@ -27,9 +27,11 @@ The whole first-run experience, in order:
    keyframes;
 2. the **Ping Pong King title screen** with its bouncing ball, the **hamburger
    menu** that slides out on easeOutElastic, and the menu BGM fading up over 3 s;
-3. the **tutorial** — HIT L, HIT R, "Well done!", the ten rivals lining up,
-   "Hi Rookie" / "Wanna be our Ping Pong King?" / "Try to beat 10 of us!" /
-   "Are you game for it?", and the **I'M READY** button;
+3. the **tutorial** — HIT L, HIT R, the three-ball little mission ("Hit 3
+   balls to complete this tutorial."), "Well done!", the ten rivals lining up,
+   "Hi Rookie" / "Wanna be our Ping Pong King?" / "Try to beat 50 of us!" /
+   "Are you game for it?", and the **I'M READY** button — with SKIP and both
+   of its alerts;
 4. the **RivalMode career** — 50 rivals counted down from #50 BEST FRIEND to
    #1 PINGPONG KING, each introduced on the ladder card and each with a line
    when you beat him ("You Win.", "You win, I'm impressed."); READY / FIGHT,
@@ -37,9 +39,20 @@ The whole first-run experience, in order:
    LOSE A POINT on flip-card score pads, the screen inverting to black on a
    lost ball, the crowd rising on a won match, and the pause screen — which is
    the rival ladder with PAUSED and RESUME;
-5. **Today's GIF** — the five share panels with their animated clips;
+5. **Today's GIF** — the eight share panels with their animated clips;
 6. the ending: **"Now You Are Ping Pong King"**, the crown, the rotating light
-   and the champion's three dances.
+   and the champion's three dances;
+7. the **Orangenose Tournament** — its introduction panel, then six bouts
+   against the studio (Jeff the programmer, Chelsea the artist, Rose,
+   Tracy, Leon, and All staff) on their own palette and their own bridge;
+8. the **PPK Impossible Test** — three endless modes with their own intro
+   alerts, score classes and result pages:
+   **Eyesight**, where every point you win shrinks the whole play area by 15%;
+   **Concentration**, one button, every ball to the same place, scored in
+   seconds survived; and **Reverse**, where two seconds in a pair of hands
+   reaches on screen, picks up HIT L and HIT R and swaps them over;
+9. **Revive** — "One More Chance?" when you are one ball from losing a match,
+   with the ball bouncing against a ten-second counter.
 
 ## Controls
 
@@ -88,6 +101,15 @@ in the source and explained in [`docs/SPEC.md`](docs/SPEC.md) §10:
   dead, so the rival never uses its black B3 art.
 - `Touch_ManB_Table` branches on `isHitSweetSpot` and applies the same ×1.1
   either way.
+- Three of the eight share panels (CatchTheBall, KungFu, Ballet) fall off the
+  end of `SetShareGIF`'s switch and ship with empty sprite arrays, so they are
+  a title and a blurb over a blank panel — and the index that selects them
+  wraps before it ever reaches them.
+- A tournament match opens on the *career's* difficulty: `Reset_EnterGame`
+  reads `OutterStageOrder` in both game modes.
+- `GetScoreClass` grades a score past the last bound "S" rather than clamping.
+- Reverse mode resets its round counter instead of clamping it, so its
+  difficulty saws; Concentration, the same code, clamps.
 
 One thing that looks like a bug but is not: a rally is **silent apart from the
 hits**. `Audios.BGM` is a null reference in the scene — only the home and ending
@@ -95,38 +117,62 @@ scenes have music.
 
 ## What is not here
 
-The other three play modes (Eyesight, Concentrate, Invert), the OG tournament,
-the endless mode, the rival bridge and the revive offer. All of them are
-*extracted* — their scenes, trails and `Core` configuration are in
-`assets/data/game.js`, and they reuse `Core` unchanged — but they have no scene
-logic yet. The ad, IAP, Facebook, Firebase, GameAnalytics and Crashlytics layers
-are inert. See [`docs/SPEC.md`](docs/SPEC.md) §11 for the full list.
+Every screen the game ships. The build contains exactly two Unity scenes,
+`OGSplashScene` and `_Project`, and the self-test enumerates all 38
+MonoBehaviours present in them and fails if one is unaccounted for.
+
+Three of those 38 have no counterpart, and none of them is unfinished work:
+
+- `RivalModeBridge` / `RivalModeBridgeScrollRect` — the older ten-rival bridge.
+  It is still in the scene, but it ships switched off and nothing references it;
+  `RivalModeScene.Bridge` is a `TestBridge`.
+- `BannerController` — the ad banner. There is no ad network here.
+
+Two more classes are compiled into `Assembly-CSharp.dll` but are **not in the
+build at all** — no GameObject carries them and the Impossible Test list has no
+card for either, so there is nothing to port: `TestModeScene` and `DemoMode`
+(with their list components and `DemoResultPage`).
+
+The ad, IAP, Facebook, Firebase, GameAnalytics and Crashlytics layers are inert.
+Revive's rewarded video is replaced by the branch the original already has for
+its own test flag; the settings drawer's No Ads and Restore take the
+already-purchased path. See [`HANDOFF.md`](HANDOFF.md) §6 for the full list of
+deviations and §7 for the coverage argument.
 
 ## Layout
 
 ```
 index.html
-engine.js    RectTransform resolution, trimmed-sprite drawing, LeanTween, Scene
-scenes.js    the splash, the home screen, the settings overlay
-rival.js     Core (the ball engine), RivalModeModel, the crowd, RivalModeScene
-extra.js     the tutorial, the ending, Today's GIF
+engine.js    RectTransform resolution, trimmed-sprite drawing, rich text,
+             LeanTween, Scene
+scenes.js    the splash, the home screen, the settings drawer and its
+             How To Play and Credits panels
+rival.js     Core (the ball engine), RivalModeModel, the crowd, the bridge
+             (career ladder and tournament), Revive, RivalModeScene
+extra.js     the tutorial, the ending, Today's GIF, the tournament panel
+modes.js     the three Impossible Test modes and their card list
 app.js       boot and the scene manager
-selftest.js  144 in-page assertions
+selftest.js  238 in-page assertions
 ```
 
 ## Dev harness
 
 ```
-?goto=home|rival|tutorial|ending|gif   jump straight to a screen
+?goto=home|rival|tutorial|ending|gif|endless|tournament|
+      tournamentinfo|eyesight|concentrate|invert    jump to a screen
 ?nogate=1       skip the tap-to-start gate
 ?nobridge=1     skip the challenger card and go straight to the rally
 ?stage=N        start on career stage N (0-49)
-?gif=N          which share panel (0-4)
+?gif=N          which share panel (0-7)
 ?fresh=1        wipe the save
+?complete=1     mark the career finished (unlocks the tournament)
+?days=N         pretend the game was installed N days ago -- the Impossible
+                Test needs 1, exactly as the APK does
+?revive=1       raise the revive offer a second into a rally
+?drag=t:a,b     a scripted ladder drag, in canvas x
 ?auto=1         a perfect player, and auto-advance the tutorial
 ?crowd=1        bring the audience up on its own
 ?dbg=1          live state overlay
-?probe=1        dump what is actually painting, for layout work
 ?tap=t:x,y;...  scripted taps in canvas coordinates
 ?selftest=1     run the assertions and print PASS/FAIL into the page
 ```
@@ -134,7 +180,8 @@ selftest.js  144 in-page assertions
 ```sh
 ./shot.sh <name> ["<query>"] [ms]    # screenshot -> shots/
 ./shot2.sh <name> "<query>" <ms>     # the same, without the freeze
-./selftest.sh                        # 144 assertions, headless
+./selftest.sh                        # 238 assertions, headless
+./errs.sh "<query>" <ms>             # dump every uncaught error the page hit
 ```
 
 The self-test checks the career and group tables, the rival roster and the lines
@@ -146,8 +193,11 @@ and `sizeDelta` keeping a centred rect centred), LeanTween's ease curves, both
 lane tables, the `BallData` transitions, the relax-level path, the
 `Group_Extreme` bug, the sweet-spot boundary, where the rival stands for each
 of B1/B2/B3, the per-stage HIT button sprite, the button press moving down
-rather than scaling, the ladder's fifty entries, and a real scored rally with
-both miss classifications.
+rather than scaling, the ladder's fifty entries and where a drag snaps to, the
+tournament's six bouts and its 1-indexed tables, the three modes' score classes
+and difficulty bounds, when the revive offer is due, when the share panel is,
+Unity's rich text, and a real scored rally with both miss classifications.
+It ends with a coverage oracle over every script in the shipped scenes.
 Every assertion has been negative-checked: breaking the constant it covers makes
 that assertion, and only that assertion, fail.
 

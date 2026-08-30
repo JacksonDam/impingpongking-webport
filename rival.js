@@ -1378,6 +1378,15 @@ class RivalModeSceneView {
   }
 
   /* ManA's home positions -- GoLeft 0x33288 / GoRight 0x334B8 */
+  /* GoLeft 0x33xxx / GoRight 0x334B8 -- the lane change is a 0.05 s tween on
+     easeOutBack whose onComplete is the swing, not a jump and a wait. */
+  moveManA(pos, then) {
+    const n = this.core.manA;
+    const x = (pos === 'A1') ? -387.6 : 0;
+    if (!n) { if (then) then(); return; }
+    LT.moveLocal(n, x, -240, 0.05).setEase(27).setOnComplete(then);
+  }
+
   placeManA(pos) {
     const n = this.core.manA;
     if (n) n.setLocalPos(pos === 'A1' ? -387.6 : 0, -240);
@@ -1393,7 +1402,7 @@ class RivalModeSceneView {
     c.ManACurPos = 'A1';
     this.btnDown(true);
     if (from === 'A1') c.ManASwing();
-    else { this.placeManA('A1'); LT.delayedCall(0.05, () => c.ManASwing()); }
+    else this.moveManA('A1', () => c.ManASwing());     // 0x0137 / 0x00C5
   }
   GoRight() {
     const c = this.core;
@@ -1403,8 +1412,7 @@ class RivalModeSceneView {
     this.btnDown(false);
     if (from === 'A1') {
       c.ManACurPos = (c.ManAHitPos === 'A3') ? 'A3' : 'A2';
-      this.placeManA(c.ManACurPos);
-      LT.delayedCall(0.05, () => c.ManASwing());
+      this.moveManA(c.ManACurPos, () => c.ManASwing());
     } else if (from === 'A2') {
       c.ManACurPos = (c.ManAHitPos === 'A3') ? 'A3' : 'A2';
       c.ManASwing();

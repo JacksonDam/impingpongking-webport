@@ -97,9 +97,12 @@ The list holds volume, Facebook, rate-us, no-ads, credits and how-to-play.
 `GameMgr/GameMode` names the play modes: `RivalMode`, `OGTournamentMode`,
 `EyesightMode`, `ConcentrateMode`, `InvertMode`, `TemplateMode`, `TestMode`.
 
-All four play modes share one engine — the `Core` MonoBehaviour — and differ
-only in the scene logic wrapped around it. **This port implements RivalMode**,
-the 80-stage career, which is the game's main line.
+All the play modes share one engine — the `Core` MonoBehaviour — and differ
+only in the scene logic wrapped around it. The port implements every mode the
+build actually ships: RivalMode (the 50-rival career over an 80-stage
+difficulty table), the OG Tournament, and the three Impossible Test modes.
+`TestModeScene` and `TemplateMode`/`DemoMode` are compiled into the assembly
+but **no GameObject in the build carries them** — see §11.
 
 ### The A/B lane grid
 
@@ -494,25 +497,86 @@ assignment is dead, so the opponent never uses the black B3 art after a loss.
 **`Touch_ManB_Table` 0x30FD4 branches on `isHitSweetSpot` and then applies the
 same `× 1.1` in both arms.** The test has no effect.
 
+**`Endless_MakeBallList` 0x2F7xx repeats the `Group_Extreme` mistake** in
+Reverse mode's own bag of thirty balls, in the same shape.
+
+**Three of the eight share panels have no art.** `SetShareGIF` 0x3FF44 maps
+`GIFIndex` 0..4 — four prefabs and the static "Like us?" picture — and 5, 6 and
+7 (CatchTheBall, KungFu, Ballet) fall off the end of its switch. Their sprite
+arrays ship empty in the scene as well, so all three would be a title and a
+blurb over a blank panel. They are unreachable in practice: the index that
+selects them is reset to 0 whenever it exceeds `FBPostCount` (4).
+
+**A tournament match opens on the career's difficulty.** `Reset_EnterGame`
+0x34178 calls `LoadLevelProb(OutterStageOrder * 5 + PlayerScore + 1)`
+regardless of `curGameMode`; only the win coroutine uses the tournament's own
+`50 + OGTournamentStageOrder * 5 + PlayerScore`.
+
+**`GetScoreClass` 0xD990 grades an out-of-range score "S".** The linear search
+over `scoreClassIntervalList` falls through to `Find(x => x.className == "S")`
+instead of clamping to the nearest band.
+
+**Reverse mode resets its round counter rather than clamping it.**
+`ConcentrateModeScene::Core_SetFromBall` does `if (RoundCount > 15)
+RoundCount = 15`; `InvertModeScene`'s otherwise identical body does
+`RoundCount = 0`, so the difficulty ramp saws instead of plateauing.
+
+**`SetUserSpeedByBiasPercentage` is dead code in two of the three modes.**
+Concentrate and Invert each carry a full copy of RivalMode's — nearly two
+hundred lines of `BiasFormula` calls — that nothing calls; both recompute the
+intervals inline in `Core_SetFromBall`. Only Eyesight's is reachable.
+
+**The Reverse bridge drops its silhouette a slot early.** `TournamentBridge::
+SetUpBridge` guards `RightRightEnemyImage` with `OGTournamentStageOrder > 3`
+where the ladder's equivalent is `>= totalEnemyNum - 2`.
+
 ---
 
 ## 11. What the port leaves out
 
-Ported: the splash, the home screen and its menu, the tutorial, the RivalMode
-career with its rivals and rules, the share panel and the ending.
+Ported: everything the build ships. The APK contains exactly **two Unity
+scenes** — `Assets/_Technologies/OGSplash/OGSplashScene.unity` and
+`Assets/_Project/_Project.unity` — and every screen other than the splash is a
+`BaseScene` view group inside `_Project`. Enumerating the MonoBehaviours
+actually present in those scenes gives **38**, and the port's self-test asserts
+that count and that each of the 38 is accounted for.
 
-Not ported:
+Three of the 38 have no counterpart in the port, and none of them is
+unfinished work:
 
-- **The other three play modes** — `EyesightModeScene`, `ConcentrateModeScene`
-  and `InvertModeScene` — plus `TestModeScene`, the OG tournament and the
-  endless mode. All of them are *extracted*: their scenes, ball trails and
-  `Core` configuration are in `assets/data/game.js`, and they share `Core`
-  unchanged, so what is missing is their scene logic.
-- The **Revive** offer, and dragging the rival ladder by hand (it is built and
-  centred, but not scrollable by touch).
+- **`RivalModeBridge` / `RivalModeBridgeScrollRect`** — the older ten-rival
+  bridge. It is still in `RivalModeScene`, but the GameObject ships
+  `m_IsActive: false` and nothing holds a reference to it: `RivalModeScene`'s
+  `Bridge` field is typed `TestBridge`, and its `TBridge` field
+  `TournamentBridge`. It is a leftover from the version before the ladder grew
+  to fifty.
+- **`BannerController`** — the "Remove ads?" strip. It only ever appears from
+  `TechMgr.Ad`'s `OnBannerLoaded` callback, and there is no ad network here.
+
+Two more classes are compiled into `Assembly-CSharp.dll` but are **not in the
+build at all** — no GameObject carries them, and the Impossible Test list has
+no card for either, so there is nothing to port:
+
+- `TestModeScene`, `TestModeListComponent`
+- `DemoMode`, `DemoModeListComponent`, `DemoResultPage`
+
+`GameMgr/SceneEnum` still names `TestModeScene = 21` and `GameMgr/GameMode`
+still names `TemplateMode` and `TestMode`; the enums outlived the scenes.
+
+### Deviations, stated
+
 - **Ads, IAP, Facebook, Firebase, GameAnalytics, Crashlytics, cross-sell** and
-  the OGBackdoor debug panel: all inert, none of it gameplay. The share panel's
-  buttons show and animate but post nowhere.
-- **`ScorePad`'s flip animation**; the resting face is drawn instead.
-- **The tutorial's little mission** (the three-ball drill between the two taught
-  hits) is shortened to the two taught hits.
+  the OGBackdoor debug panel are inert. The share panel's buttons show and
+  animate but post nowhere; No Ads and Restore take the path a player who has
+  already bought it would take; Rate Us keeps its counter without opening a
+  store prompt.
+- **Revive's rewarded video.** The original gates the offer on
+  `TechMgr.Ad.HasVideo()` and pays it out through a video. The port takes the
+  branch `Revive::OnWatchVideoUp` 0x24CDF already has for `IsTestingRevive` —
+  it calls `OnVideoReward` directly — so the offer appears on the score
+  condition alone. Otherwise it would be code no player could reach.
+- **A tap-to-start gate** before the splash. Browsers will not play audio
+  before a gesture, and the first thing the game plays is the splash's click.
+  On a phone, launching the app is that gesture.
+- **Audio is re-encoded** from the shipped FSB5 (Vorbis and FMOD-ADPCM) to MP3,
+  because browsers cannot decode FSB5.
