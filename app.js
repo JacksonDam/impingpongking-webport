@@ -169,6 +169,8 @@ class GameMgr {
       v.EnterWithBridge(this.db.OutterStageOrder);
     }
     if (qs.has('revive')) LT.delayedCall(1.0, () => v.revive.ShowUpReviveScene());
+    /* ?losebridge=1 -- the ladder as it comes back after a lost match */
+    if (qs.has('losebridge')) LT.delayedCall(3.0, () => { v.core.StopRun(); v.ShowWhenLose(v.stageOrder); });
   }
 
   onTutorialDone() {
@@ -252,12 +254,19 @@ class GameMgr {
     }
     this.goRival();
   }
-  onMatchLost(stage) {
+  async onMatchLost(stage) {
+    /* BridgeShowUpWhenLose 0x17444 -- the ladder comes back with the rival who
+       beat you in his win pose, and a Retry button.  It waits there. */
     this.db.numOfAttempt = (this.db.numOfAttempt || 0) + 1;
     const key = this.curGameMode === 2 ? 'TournamentStageRetryCount' : 'OutterStageRetryCount';
     this.db[key] = this.db[key] || {};
     this.db[key][stage] = (this.db[key][stage] | 0) + 1;
     DB.save();
+    if (this.view && this.view.ShowWhenLose) {
+      await this.view.ShowWhenLose(stage);
+      if (qs.get('auto')) LT.delayedCall(1, () => { if (this.view && this.view.awaitingRetry) this.goRival(); });
+      return;                                  // the ladder waits for Retry
+    }
     this.goRival();
   }
   /* RivalModeScene/<WinAnim> activates the share panel after a won match */
@@ -342,6 +351,13 @@ class GameMgr {
     if (this.settings && this.settings.hitTest(x, y)) {
       this.settings.onSettingBtnDown(this.curSceneState); return;
     }
+    /* the ladder after a lost match: Retry plays the rival again, Home leaves */
+    if (this.view && this.view.hitBridge) {
+      const h = this.view.hitBridge(x, y);
+      if (h === 'retry') { this.goRival(); return; }
+      if (h === 'home') { this.goHome(); return; }
+      if (this.view.awaitingRetry) return;
+    }
     if (this.settings && this.settings.IsSettingShow) {
       /* while paused the bridge is up: Resume closes it, Home leaves */
       const v = this.view;
@@ -354,7 +370,7 @@ class GameMgr {
     }
     if (this.view instanceof HomeSceneView) {
       const h = this.view.hit(x, y);
-      if (h === 'play') this.view.onLetsFight();
+      if (h === 'play') this.view.onLetsFightPressed();
       else if (h === 'endless') {
         /* OnEndlessModeBtnDown 0x42944 -- the intro alert on the first press */
         if (this.view.onEndlessBtn()) this.enterEndless();
@@ -450,7 +466,7 @@ async function boot() {
     if (e.key === 'ArrowLeft' || e.key === 'a') { if (v && v.GoLeft) v.GoLeft(); }
     else if (e.key === 'ArrowRight' || e.key === 'd') { if (v && v.GoRight) v.GoRight(); }
     else if (e.key === 'p') { if (mgr.settings) mgr.settings.onSettingBtnDown(mgr.curSceneState); }
-    else if (e.key === ' ') { if (v instanceof HomeSceneView) v.onLetsFight(); }
+    else if (e.key === ' ') { if (v instanceof HomeSceneView) v.onLetsFightPressed(); }
   });
 
   /* ?drag=t:from,to -- a scripted ladder drag in canvas x, for the harness */

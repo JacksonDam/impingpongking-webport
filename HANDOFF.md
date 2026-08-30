@@ -38,7 +38,7 @@ copy it across; the repo copy is the one people read.
 ## 3. Verification discipline
 
 ```sh
-./selftest.sh                    # 261 assertions, headless
+./selftest.sh                    # 277 assertions, headless
 ./shot2.sh look "auto=1" 9000    # screenshot 9 s in
 ./errs.sh "goto=rival" 6000      # dump every uncaught error the page hit
 ```

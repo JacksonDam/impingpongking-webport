@@ -953,12 +953,28 @@ class RivalModeSceneView {
     this.Reset_EnterGame(stageOrder);
   }
 
-  /* the beaten rival's line, then on to the next challenger */
+  /* the beaten rival's line, then the card advances to the next challenger */
   async ShowBeatenThenNext(stageOrder) {
     await this.bridge.ShowWhenEnterGame(stageOrder, this.bgHex(stageOrder));
     await this.bridge.ShowBeaten(stageOrder);
+    const next = stageOrder + 1;
+    if (next < this.bridge.total) await this.bridge.ChangeToNextChallenger(next);
     this.bridge.Hide();
     await wait(400);
+  }
+
+  /* and the other half: losing a match puts you back on the ladder, with a
+     Retry button, and it stays there until you press it (OnRetryBtnCLick
+     0x331B0) or go home. */
+  async ShowWhenLose(stageOrder) {
+    await this.bridge.ShowWhenLose(stageOrder, this.bgHex(stageOrder));
+    this.awaitingRetry = true;
+  }
+  hitBridge(x, y) {
+    if (!this.awaitingRetry) return null;
+    const h = this.bridge.hitResume(x, y);
+    if (h === 'retry' || h === 'home') this.awaitingRetry = false;
+    return h;
   }
 
   /* RivalModeScene::Reset_EnterGame 0x34178 */
@@ -2084,6 +2100,85 @@ class BridgeView {
     return best;
   }
 
+  /* TestBridge/<BridgeShowUpWhenLose>c__Iterator1 0x17444 -- after losing a
+     match the ladder slides in from x = 1700 with every rival you have beaten
+     stamped, the one who just beat you takes his win pose, hops twice and says
+     "YOU LOSE", and a Retry button appears. */
+  async ShowWhenLose(stage, bgHex) {
+    const g = this.gen = (this.gen | 0) + 1;
+    const alive = () => g === this.gen;
+    if (!this.group) return;
+    this.centerIndex = stage;
+    this.group.setActive(true);
+    if (this.scroll) this.scroll.setActive(true);
+    if (this.moving) { this.moving.setActive(true); this.moving.setLocalPos(0, 0); }
+    if (this.resume) this.resume.setActive(false);
+    for (const n of [this.dialog, this.dialogTail, this.dialogText]) if (n) n.setEnabled(false);
+    /* the BGM comes back up over three seconds */
+    LT.value(Audio_.bgmVol, 1, 3, v => Audio_.setBgmVolume(v));
+    for (const n of this.ladder) n.el.style.display = '';
+    this.MoveToCurRival(stage, true);
+    this.markDefeated(stage);
+    /* everything past the current rival is a silhouette */
+    for (let i = 0; i < this.ladder.length; i++) {
+      const n = this.ladder[i];
+      n.setSprite(i > stage ? this.unknownFor(i) : this.spriteFor(i));
+      n.setColor([1, 1, 1, 1]);
+    }
+    await wait(16); if (!alive()) return;
+    if (this.nameText) { this.nameText.setAlpha(0); LT.alpha(this.nameText, 1, 0.35)
+      .setOnComplete(() => this.StartScrollingEffect()); }
+    if (this.retry) { this.retry.setActive(true); this.retry.setAlpha(0); LT.alpha(this.retry, 1, 0.4); }
+    if (this.homeGroup) {
+      this.homeGroup.setActive(true);
+      this.homeGroup.setLocalScale(0, 0);
+      LT.scale(this.homeGroup, 1, 0.5).setEase(30);
+    }
+    if (this.bg) { const c = this.hex(bgHex); this.bg.setColor([c[0], c[1], c[2], 0]); LT.alpha(this.bg, 1, 0.4); }
+    if (this.middle) this.middle.setLocalScale(1, 1);
+    this.group.setLocalPos(1700, this.group.localPos[1]);
+    LT.moveLocalX(this.group, 0, 0.3);
+    /* +0.8 s the rival takes his win pose, hops and says YOU LOSE */
+    LT.delayedCall(0.8, () => {
+      if (!alive()) return;
+      const n = this.ladder[stage];
+      if (n && this.cfg.BridgeEnemyWinSprite) { n.setSprite(this.cfg.BridgeEnemyWinSprite); n.setNativeSize(); }
+      if (this.dialogText) {
+        this.dialogText.setEnabled(true);
+        this.dialogText.setColor(this.hex('161616FF'));
+        this.dialogText.setText('YOU LOSE');
+      }
+      for (const d of [this.dialog, this.dialogTail]) if (d) { d.setEnabled(true); d.setAlpha(0); LT.alpha(d, 1, 0.15); }
+      if (this.dialogText) LT.alpha(this.dialogText, 1, 0.15);
+      if (n) LT.moveLocalY(n, n.localPos[1] + 100, 0.05).setLoopPingPong(2);
+    });
+    /* +1.7 s it fades again */
+    LT.delayedCall(1.7, () => {
+      if (!alive()) return;
+      for (const d of [this.dialog, this.dialogTail, this.dialogText]) if (d) LT.alpha(d, 0, 0.1);
+    });
+    await wait(2200);
+    return alive();
+  }
+
+  /* TestBridge::ChangeToNextChallenger 0x16DEC -- the three portraits slide
+     587 left, the beaten rival shrinks to 0.4 and the next grows to full. */
+  async ChangeToNextChallenger(stage) {
+    for (const d of [this.dialog, this.dialogTail]) if (d) d.setColor([1, 1, 1, 0]);
+    if (this.dialogText) this.dialogText.setColor([0, 0, 0, 0]);
+    for (const n of [this.numberText, this.nameText]) if (n) LT.alpha(n, 0, 0.08);
+    if (this.moving) LT.moveLocalX(this.moving, -587, 0.3).setEase(27);
+    if (this.middle) LT.scale(this.middle, 0.4, 0.16);
+    if (this.right) LT.scale(this.right, 1, 0.16);
+    await wait(200);
+    /* m__3: the card is rebuilt on the next rival and slid back to zero */
+    this.SetUpBridge(stage);
+    if (this.moving) this.moving.setLocalPos(0, 0);
+    if (this.middle) this.middle.setLocalScale(1, 1);
+    for (const n of [this.numberText, this.nameText]) if (n) LT.alpha(n, 1, 0.2);
+    await wait(300);
+  }
+
   /* TestBridge::BridgeHide 0x16698 */
   Hide() {
     this.StopScrollingEffect();
@@ -2096,10 +2191,10 @@ class BridgeView {
   }
 
   hitResume(x, y) {
-    for (const n of [this.resume, this.homeGroup]) {
+    for (const [n, id] of [[this.resume, 'resume'], [this.retry, 'retry'], [this.homeGroup, 'home']]) {
       if (!n || !n.active) continue;
       const r = n.el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return n === this.resume ? 'resume' : 'home';
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return id;
     }
     return null;
   }

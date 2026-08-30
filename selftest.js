@@ -784,6 +784,58 @@
       v.destroy();
     }
 
+    /* ------------------------------------ the bridge between matches */
+    {
+      const host = document.createElement('div');
+      const v = new RivalModeSceneView(host, mgr, 1);
+      const b = v.bridge;
+      /* ChangeToNextChallenger 0x16DEC rebuilds the card on the next rival */
+      b.SetUpBridge(10);
+      eq('the card names the current rival', b.nameText.txt.textContent, b.nameFor(10));
+      b.SetUpBridge(11);
+      eq('and the next one after it advances', b.nameText.txt.textContent, b.nameFor(11));
+      /* the Retry button only answers once the match is lost */
+      ok('no retry to hit yet', v.hitBridge(0, 0) === null);
+      v.awaitingRetry = true;
+      eq('and the bridge has one', !!b.retry, true);
+      v.destroy();
+    }
+
+    /* the home screen's three bottom-row layouts, and the NEW flashes */
+    {
+      const host = document.createElement('div');
+      const keep = JSON.stringify(DB.data);
+      Object.assign(DB.data, { IsRivalModeComplete: false, isEndlessModeShow: false });
+      let h = new HomeSceneView(host, mgr);
+      ok('a virgin save has neither extra button',
+         !h.tourShadow.active && !h.endlessShadow.active);
+      h.destroy();
+      Object.assign(DB.data, { IsRivalModeComplete: true, isEndlessModeShow: false });
+      h = new HomeSceneView(host, mgr);
+      ok('finishing the career adds the tournament', h.tourShadow.active);
+      ok('but not the Impossible Test', !h.endlessShadow.active);
+      near('and Play shifts left', h.playShadow.localPos[0], -140, 1);
+      h.destroy();
+      Object.assign(DB.data, { IsRivalModeComplete: true, isEndlessModeShow: true });
+      h = new HomeSceneView(host, mgr);
+      ok('both, and Play returns to the middle', h.tourShadow.active && h.endlessShadow.active);
+      near('at x = 0', h.playShadow.localPos[0], 0, 1);
+      near('the tournament sits right', h.tourShadow.localPos[0], 353.4, 1);
+      near('and the test left', h.endlessShadow.localPos[0], -358, 1);
+      h.destroy();
+      /* the first press of Let's Fight explains the game instead */
+      DB.data.HomeScene_FirstTimeAlertShow = false;
+      h = new HomeSceneView(host, mgr);
+      h.onLetsFightPressed();
+      ok('the first press raises the alert', h.alert === h.gameAlert);
+      ok('and it is not the play button', !h.leaving);
+      h.OnCustomAlertClick();
+      ok('dismissing it starts the game', h.leaving);
+      ok('and it never comes back', DB.data.HomeScene_FirstTimeAlertShow);
+      h.destroy();
+      Object.assign(DB.data, JSON.parse(keep));
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');

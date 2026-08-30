@@ -136,6 +136,8 @@ class HomeSceneView {
     this.endlessBtn = s.n(P + 'EndlessModeBtnShadow Image/EndlessModeBtn Image');
     this.tourShadow = s.n(P + 'OrangenoseTournamentShadow Image');
     this.tourBtn = s.n(P + 'OrangenoseTournamentShadow Image/OrangenoseTournamentBtn Image');
+    this.tourNew = s.n(P + 'OrangenoseTournamentShadow Image/OrangenoseTournamentBtn Image/New Image');
+    this.endlessNew = s.n(P + 'EndlessModeBtnShadow Image/EndlessModeBtn Image/New Image');
     this.newRivals = s.n(P + 'NewRivalsAlert Group');
     this.newRivalsBg = s.n(P + 'NewRivalsAlert Group/AlertBg Image');
     this.newRivalsOk = s.n(P + 'NewRivalsAlert Group/AlertBg Image/OKBtn Image');
@@ -143,6 +145,7 @@ class HomeSceneView {
     this.endlessIntroBg = s.n(P + 'EndlessIntroAlert Group/AlertBg Image');
     this.endlessIntroOk = s.n(P + 'EndlessIntroAlert Group/AlertBg Image/OKBtn Image');
     this.gameAlert = s.n(P + 'GameAlert Group');
+    this.gameAlertPanel = s.n(P + 'GameAlert Group/AlertPanel Image');
     this.gameAlertBtn = s.n(P + 'GameAlert Group/AlertPanel Image/AlertBtn Image');
     s.hide(P + 'NewRivalsAlert Group', P + 'GameAlert Group',
            P + 'EndlessIntroAlert Group',
@@ -177,6 +180,10 @@ class HomeSceneView {
       n.setLocalScale(1, 1);
       LT.scale(n, 1.02, 0.6).setEase(15).setLoopPingPong(-1);
     }
+    /* the NEW flash stays on a button until you have been into that mode
+       (OnViewEnable's last two lines) */
+    if (this.tourNew) this.tourNew.setEnabled(!db.isTournamentModeEnter);
+    if (this.endlessNew) this.endlessNew.setEnabled(!db.isEndlessModeEnter);
     if (this.playBtn) this.playBtn.el.style.cursor = 'pointer';
   }
 
@@ -204,9 +211,10 @@ class HomeSceneView {
       const ok = this.alert === this.endlessIntro ? this.endlessIntroOk
                : this.alert === this.newRivals ? this.newRivalsOk : this.gameAlertBtn;
       if (this.inside(ok, x, y)) {
-        const wasIntro = this.alert === this.endlessIntro;
+        const which = this.alert;
+        if (which === this.gameAlert) { this.OnCustomAlertClick(); return 'alert'; }
         this.hideAlert();
-        return wasIntro ? 'endless-ok' : 'alert';
+        return which === this.endlessIntro ? 'endless-ok' : 'alert';
       }
       return 'alert';                       // the panel eats everything else
     }
@@ -223,6 +231,12 @@ class HomeSceneView {
     LT.value(0, 1, 3, v => Audio_.setBgmVolume(v));      // <OnViewEnable>m__3
     this.HomeTitleShowAnim();
     this.HomeBallAnimation();
+    /* HomeScene/<NewImageAnim>c__Iterator4 -- the NEW flash rocks 10 degrees
+       and back every 0.6 s */
+    for (const n of [this.tourNew, this.endlessNew]) {
+      if (n && n.active && n.img && n.img.style.visibility !== 'hidden')
+        LT.rotate(n, 10, 0.3).setEase(14).setLoopPingPong(-1);
+    }
     /* FirstTimeOpenAfterUpdate raises the "New rivals added" alert once */
     if (DB.data.FirstTimeOpenAfterUpdate) {
       DB.data.FirstTimeOpenAfterUpdate = false; DB.save();
@@ -258,6 +272,21 @@ class HomeSceneView {
       this.ball.setLocalPos(base[0], y);
       if (this.ballShadow) this.ballShadow.setAlpha(0.35 + 0.35 * (1 - Math.abs(Math.sin(k * Math.PI))));
     }).setLoopClamp();
+  }
+
+  /* HomeScene::OnLetsFightBtnClick_CheckSurvey 0x42xxx -- the very first press
+     of Let's Fight introduces the game instead of starting it. */
+  onLetsFightPressed() {
+    if (DB.data.HomeScene_FirstTimeAlertShow) { this.onLetsFight(); return; }
+    this.ShowCustomAlert();
+  }
+  /* HomeScene::ShowCustomAlert */
+  ShowCustomAlert() { this.showAlert(this.gameAlert, this.gameAlertPanel); }
+  /* HomeScene::OnCustomAlertClick 0x42908 */
+  OnCustomAlertClick() {
+    this.hideAlert();
+    DB.data.HomeScene_FirstTimeAlertShow = true; DB.save();
+    this.onLetsFight();
   }
 
   /* HomeScene::OnLetsFightBtnUp 0x4256C */

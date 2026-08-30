@@ -162,7 +162,7 @@ rival.js     Core (the ball engine), RivalModeModel, the crowd, the bridge
 extra.js     the tutorial, the ending, Today's GIF, the tournament panel
 modes.js     the three Impossible Test modes and their card list
 app.js       boot and the scene manager
-selftest.js  261 in-page assertions
+selftest.js  277 in-page assertions
 ```
 
 ## Dev harness
@@ -190,7 +190,7 @@ selftest.js  261 in-page assertions
 ```sh
 ./shot.sh <name> ["<query>"] [ms]    # screenshot -> shots/
 ./shot2.sh <name> "<query>" <ms>     # the same, without the freeze
-./selftest.sh                        # 261 assertions, headless
+./selftest.sh                        # 277 assertions, headless
 ./errs.sh "<query>" <ms>             # dump every uncaught error the page hit
 ```
 
