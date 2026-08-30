@@ -16,6 +16,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const randRange = (a, b) => a + Math.floor(Math.random() * (b - a));
 const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
 
+/* OGGameUtil::HexToColor -- "RRGGBB" or "RRGGBBAA" to a 0..1 RGBA quad */
+function hexColor(h) {
+  const v = p => parseInt(h.substr(p, 2), 16) / 255;
+  return [v(0), v(2), v(4), h.length >= 8 ? v(6) : 1];
+}
+
 function loadImage(src) {
   return new Promise((res, rej) => {
     const i = new Image();
@@ -252,6 +258,19 @@ class Node {
   setNativeSize() {
     const r = spriteRec(this._spr);
     if (r) this.setSize(r.sw, r.sh);
+    return this;
+  }
+
+  /* Transform.SetAsLastSibling / SetAsFirstSibling.  Sibling index is paint
+     order in a Unity canvas, and it is DOM order here, so both are a move
+     within the parent element. */
+  setAsLastSibling() { const p = this.el.parentNode; if (p) p.appendChild(this.el); return this; }
+  setAsFirstSibling() { const p = this.el.parentNode; if (p) p.insertBefore(this.el, p.firstChild); return this; }
+
+  /* Transform.SetParent, keeping the element's drawn position -- the game uses
+     it only to re-parent the Reverse-mode hands onto the buttons they grab. */
+  setParentNode(n) {
+    if (n && n.el !== this.el.parentNode) n.el.appendChild(this.el);
     return this;
   }
 }

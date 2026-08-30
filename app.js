@@ -51,6 +51,10 @@ class GameMgr {
     if (go === 'tutorial') { this.db.isTutorialPass = false; return this.goRival(); }
     if (go === 'ending') return this.goEnding();
     if (go === 'gif') return this.goGif(parseInt(qs.get('gif') || '0', 10));
+    if (go === 'endless') return this.goEndlessList();
+    if (go === 'eyesight') return this.goMode('EyesightModeScene');
+    if (go === 'concentrate') return this.goMode('ConcentrateModeScene');
+    if (go === 'invert') return this.goMode('InvertModeScene');
     await this.splash();
     this.goHome();
   }
@@ -110,6 +114,31 @@ class GameMgr {
 
   onPause(paused) { if (this.view && this.view.Pause) this.view.Pause(paused); }
 
+  /* HomeScene::OnEndlessModeBtnDown 0x42B4C -> the IMPOSSIBLE TEST list */
+  goEndlessList() {
+    this.clearView();
+    this.curSceneState = SceneEnum.EndlessListShow;
+    if (this.settings) { this.settings.SettingBtnHide(0.1); }
+    const v = new EndlessListView(this.stage, this);
+    this.view = v;
+  }
+
+  /* the three Impossible Test modes share Core with RivalMode */
+  goMode(sceneName) {
+    this.clearView();
+    this.curSceneState = sceneName === 'EyesightModeScene' ? SceneEnum.EyesightModeScene
+      : sceneName === 'ConcentrateModeScene' ? SceneEnum.ConcentrateModeScene
+      : SceneEnum.InvertModeScene;
+    if (!this.settings) this.settings = new SettingsView(this.stage, this);
+    this.settings.scene.root.style.zIndex = 5;
+    this.settings.ChangeSettingSpriteToPauseSprite();
+    this.settings.SettingBtnShow(0.1);
+    const v = new (MODE_VIEW[sceneName])(this.stage, this, sceneName);
+    this.stage.insertBefore(v.scene.root, this.settings.scene.root);
+    this.view = v;
+    v.enter();
+  }
+
   async onMatchWon(stage) {
     /* the beaten rival says his line on the bridge before the ladder moves on */
     if (this.view && this.view.ShowBeatenThenNext) await this.view.ShowBeatenThenNext(stage);
@@ -146,6 +175,12 @@ class GameMgr {
 
   input(x, y) {
     Audio_.unlock();
+    if (this.view instanceof EndlessListView) {
+      const h = this.view.hit(x, y);
+      if (h === 'back') this.goHome();
+      else if (h) this.goMode(h);
+      return;
+    }
     if (this.view instanceof ShareGIFView) {
       if (this.view.hitTest(x, y)) this.goRival();
       return;
@@ -268,10 +303,12 @@ async function boot() {
   if (qs.get('auto')) {
     setInterval(() => {
       const v = mgr.view;
-      if (!(v instanceof RivalModeSceneView)) return;
+      const isMode = v instanceof ModeSceneView;
+      if (!(v instanceof RivalModeSceneView) && !isMode) return;
       const c = v.core;
       if (!c.IsAbleToHitBack || c.IsInSwingColddown) return;
-      if (c.ManAHitPos === 'A1') v.GoLeft(); else v.GoRight();
+      const left = c.ManAHitPos === 'A1';
+      if (left) v.GoLeft(); else v.GoRight();
     }, 16);
   }
   if (qs.get('dbg')) {

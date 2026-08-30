@@ -546,6 +546,67 @@ class RivalModeModel {
     return this.curRoundData;
   }
   Level_GetNextRoundData() { return this.nextRoundData; }
+
+  /* RivalModeModel::Init 0x2E9xx -- rebuilds the group dictionary from the two
+     baked JSON blobs.  Idempotent; the scenes call it on every entry. */
+  Init() {
+    this.groups = {};
+    for (const g of G.data.groups)
+      this.groups[g.GroupName] = { first: g.FirstVariationIndexs, second: g.SecondVariationIndexs };
+    this.UsedGroupSequence = [];
+  }
+
+  /* RivalModeModel::Endless_MakeBallList 0x2F7xx -- Reverse mode does not read
+     the level table at all; it mixes one fixed bag of thirty balls. */
+  Endless_MakeBallList() {
+    this.groupEasyProb = 20; this.groupNormalProb = 10; this.groupMiddleProb = 20;
+    this.groupHardProb = 20; this.groupExpertProb = 10; this.groupExtremeProb = 20;
+    this.Goal = 30;
+    this.relaxIndex = 0;
+    this.enemySideFrameInterval = 0.05;
+    this.playerSideFrameInterval = 0.05;
+    this.middleFrameInterval = 0.03;
+    const S = this.CurLevelGroupSequence = [];
+    this.UsedGroupSequence = [];
+    const add = (g, n) => { for (let i = 0; i < n; i++) S.push(g); };
+    const g = this.Goal;
+    const bands = [['Group_Easy', this.groupEasyProb], ['Group_Normal', this.groupNormalProb],
+                   ['Group_Middle', this.groupMiddleProb], ['Group_Hard', this.groupHardProb],
+                   ['Group_Expert', this.groupExpertProb], ['Group_Extreme', this.groupExtremeProb]];
+    let n = 0;
+    for (const [name, p] of bands) { const c = Math.trunc(p * g / 100); n += c; add(name, c); }
+    const e = this.groupEasyProb, no = this.groupNormalProb, mi = this.groupMiddleProb,
+          ha = this.groupHardProb, ex = this.groupExpertProb;
+    /* [sic] the loop counter starts from the tally above but is compared with
+       Goal, and the Group_Extreme band is again `r >= sum && r < sum`, so it
+       never fires -- the same two slips as LoadLevelProb 0x2EAA4. */
+    for (; n < g; n++) {
+      const r = randRange(0, 100);
+      if (r < e) add('Group_Easy', 1);
+      else if (r >= e && r < e + no) add('Group_Normal', 1);
+      else if (r >= e + no && r < e + no + mi) add('Group_Middle', 1);
+      else if (r >= e + no + mi && r < e + no + mi + ha) add('Group_Hard', 1);
+      else if (r >= e + no + mi + ha && r < e + no + mi + ha + ex) add('Group_Expert', 1);
+    }
+    this.Goal = this.CurLevelGroupSequence.length + 1;
+  }
+
+  /* RivalModeModel::Endless_GetRoundDataAndDelete 0x2F9EC -- the same body as
+     the Level_ version but it also files the group away in UsedGroupSequence */
+  Endless_GetRoundDataAndDelete(round) {
+    const S = this.CurLevelGroupSequence;
+    if (!S.length) { this.curRoundData = this.nextRoundData; return this.curRoundData; }
+    const name = S[randRange(0, S.length)];
+    const g = this.groups[name];
+    const fv = g.first[randRange(0, g.first.length)];
+    const sv = g.second[randRange(0, g.second.length)];
+    S.splice(S.indexOf(name), 1);
+    (this.UsedGroupSequence = this.UsedGroupSequence || []).push(name);
+    this.curRoundData = round ? this.nextRoundData : this.BallData(this.firstRoundData, fv, sv);
+    this.nextRoundData = this.BallData(this.curRoundData, fv, sv);
+    return this.curRoundData;
+  }
+  Endless_GetNextRoundData() { return this.nextRoundData; }
 }
 
 /* ===================================================== RivalModeAudiance

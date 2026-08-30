@@ -5,10 +5,22 @@
 <link rel="stylesheet" href="app.css">
 <div id="wrap"><div id="stage"></div></div>
 <div id="boot">loading…</div>
+<pre id="errs" hidden></pre>
+<script>
+/* every uncaught error and rejection lands in #errs, so the headless harness
+   can see a broken build instead of quietly screenshotting a blank stage */
+window.__errs = [];
+function __logErr(m) { window.__errs.push(m);
+  var e = document.getElementById("errs"); if (e) e.textContent = window.__errs.join("\n"); }
+addEventListener("error", function (e) {
+  __logErr("ERR " + (e.filename||"").split("/").pop() + ":" + e.lineno + " " + (e.message||e.error)); });
+addEventListener("unhandledrejection", function (e) { __logErr("REJ " + e.reason); });
+</script>
 <script src="assets/data/game.js"></script>
 <script src="engine.js"></script>
 <script src="scenes.js"></script>
 <script src="rival.js"></script>
 <script src="extra.js"></script>
+<script src="modes.js"></script>
 <script src="app.js"></script>
 <script src="selftest.js"></script>

@@ -389,6 +389,35 @@
        !(STAND_GALAXY[b] && (STAND_GALAXY[b].L === a || STAND_GALAXY[b].R === a)) ||
        !!TR[`From-${b}-${a} Image`])));
 
+    /* --------------------------------------------- atlas paging oracle
+     * A SpriteAtlas bigger than one page yields several Texture2Ds sharing a
+     * name; if the extractor keeps only the last, sprites from the other pages
+     * are drawn from the wrong bitmap.  The tell is cheap and total: two
+     * sprites on one page can never overlap. */
+    {
+      const by = {};
+      for (const k in g.sprites) {
+        const r = g.sprites[k];
+        (by[r[0]] = by[r[0]] || []).push({ x: r[1], y: r[2], w: r[3], h: r[4] });
+      }
+      let pairs = 0;
+      for (const a in by) {
+        const r = by[a];
+        for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) {
+          const p = r[i], q = r[j];
+          if (p.x < q.x + q.w - 1 && q.x < p.x + p.w - 1 &&
+              p.y < q.y + q.h - 1 && q.y < p.y + p.h - 1) pairs++;
+        }
+      }
+      eq('no two sprites share atlas pixels', pairs, 0);
+      /* MenuScene_Pack1 really is four pages and EndingScene two */
+      const pages = n => Object.keys(by).filter(a => a.indexOf(n) === 0).length;
+      eq('MenuScene_Pack1 page count', pages('SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47'), 4);
+      eq('EndingScene page count', pages('SpriteAtlasTexture-EndingScene-2048x2048-fmt4'), 2);
+      eq('Menu-Opponent01 is on page #17',
+         g.sprites['Menu-Opponent01'][0], 'SpriteAtlasTexture-MenuScene_Pack1-2048x2048-fmt47#17');
+    }
+
     /* ---- report */
     const bad = R.filter(x => !x.pass);
     const pre = document.createElement('pre');
